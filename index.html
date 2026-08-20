@@ -55,6 +55,30 @@
   .muted{color:var(--sub);font-size:13px}
   .errorText{color:var(--error);font-size:13px;display:none;margin-top:6px}
 
+  .backBtn{background:none;border:0;color:var(--sub);font-size:13px;padding:6px 0;margin-bottom:6px;cursor:pointer;font-weight:600;font-family:inherit}
+  .backBtn:hover{color:var(--text)}
+
+  .startSub{color:var(--sub);font-size:14px;margin:-10px 0 18px}
+
+  .choices{display:flex;flex-direction:column;gap:14px;margin-top:8px}
+  .choiceCard{display:flex;align-items:center;gap:14px;width:100%;text-align:left;background:var(--card);border:1px solid var(--border);border-left:4px solid var(--border);border-radius:14px;box-shadow:0 6px 20px rgba(2,8,23,.06);padding:16px 18px;cursor:pointer;font-family:inherit;min-height:44px;-webkit-tap-highlight-color:transparent}
+  .choiceCard:active{transform:scale(.99)}
+  .choiceCard:hover{border-color:#94a3b8}
+  .choiceCard.zeit{border-left-color:#16a34a}
+  .choiceCard.krank{border-left-color:#2563eb}
+  .choiceIcon{flex-shrink:0;width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center}
+  .choiceIcon svg{width:24px;height:24px}
+  .choiceCard.zeit .choiceIcon{background:#dcfce7;color:#16a34a}
+  .choiceCard.krank .choiceIcon{background:#dbeafe;color:#2563eb}
+  .choiceText{flex:1;min-width:0}
+  .choiceCard .ct{display:block;font-size:17px;font-weight:700;color:var(--text)}
+  .choiceCard .cs{display:block;font-size:13px;color:var(--sub);margin-top:2px;font-weight:400}
+  .choiceCard .arrow{flex-shrink:0;font-size:22px;color:var(--sub)}
+
+  .optRow{display:flex;gap:16px;flex-wrap:wrap;margin-top:4px}
+  .optRow label{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--text);margin:0;font-weight:400}
+  .optRow input{width:auto}
+
   @media print{
     @page{size:A4 portrait;margin:16mm}
     body{background:#fff}
@@ -67,7 +91,38 @@
 </style>
 </head>
 <body>
-  <div class="container">
+  <div class="container" id="screenStart">
+    <div class="topbar">
+      <h1>HeTec Tools</h1>
+      <span class="brand">HeTec GmbH</span>
+    </div>
+    <p class="startSub">Was möchtest du erledigen?</p>
+    <div class="choices">
+      <button type="button" class="choiceCard zeit" id="goZeit">
+        <span class="choiceIcon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15.5 14"></polyline></svg>
+        </span>
+        <span class="choiceText">
+          <span class="ct">Zeit Korrektur</span>
+          <span class="cs">Nachträgliche Korrektur der Arbeitszeit</span>
+        </span>
+        <span class="arrow">›</span>
+      </button>
+      <button type="button" class="choiceCard krank" id="goKrank">
+        <span class="choiceIcon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="3"></rect><path d="M8 2.5v3M16 2.5v3M3 9.5h18"></path><path d="M12 12.5v5M9.5 15h5"></path></svg>
+        </span>
+        <span class="choiceText">
+          <span class="ct">Digitale Krankmeldung</span>
+          <span class="cs">Krankmeldung digital erfassen</span>
+        </span>
+        <span class="arrow">›</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="container" id="screenZeit" style="display:none">
+    <button type="button" class="backBtn" data-back>‹ Zurück</button>
     <div class="topbar">
       <h1>Korrektur Zeiterfassung</h1>
       <span class="brand">HeTec GmbH</span>
@@ -168,6 +223,105 @@
             <button type="button" class="success" id="mailtoBtn">Per E‑Mail senden (PDF)</button>
             <button type="reset" class="danger">Formular zurücksetzen</button>
           </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="container" id="screenKrank" style="display:none">
+    <button type="button" class="backBtn" data-back>‹ Zurück</button>
+    <div class="topbar">
+      <h1>Digitale Krankmeldung</h1>
+      <span class="brand">HeTec GmbH</span>
+    </div>
+    <div class="card">
+
+      <form id="formKrank">
+        <div class="section fields">
+          <div>
+            <label for="kVorname">Vorname</label>
+            <input id="kVorname" autocomplete="given-name" required />
+          </div>
+          <div>
+            <label for="kName">Name</label>
+            <input id="kName" autocomplete="family-name" required />
+          </div>
+          <div>
+            <label for="kKasse">Krankenkasse</label>
+            <select id="kKasse" required>
+              <option value="" selected disabled>Bitte auswählen …</option>
+              <optgroup label="Baden-Württemberg / Bayern">
+                <option>AOK Baden-Württemberg</option>
+                <option>AOK Bayern</option>
+              </optgroup>
+              <optgroup label="Bundesweit (Ersatzkassen)">
+                <option>Techniker Krankenkasse (TK)</option>
+                <option>BARMER</option>
+                <option>DAK-Gesundheit</option>
+                <option>hkk Krankenkasse</option>
+                <option>KKH Kaufmännische Krankenkasse</option>
+                <option>HEK – Hanseatische Krankenkasse</option>
+              </optgroup>
+              <optgroup label="Weitere Betriebs- & Innungskrankenkassen">
+                <option>IKK classic</option>
+                <option>IKK gesund plus</option>
+                <option>BIG direkt gesund</option>
+                <option>BKK firmus</option>
+                <option>Mobil Krankenkasse</option>
+                <option>SBK – Siemens-Betriebskrankenkasse</option>
+                <option>Audi BKK</option>
+                <option>Bosch BKK</option>
+                <option>Mercedes-Benz BKK</option>
+                <option>BAHN-BKK</option>
+                <option>mkk – meine krankenkasse</option>
+                <option>pronova BKK</option>
+                <option>VIACTIV Krankenkasse</option>
+                <option>vivida bkk</option>
+                <option>mhplus Krankenkasse</option>
+                <option>KNAPPSCHAFT</option>
+                <option>Novitas BKK</option>
+              </optgroup>
+              <option value="Sonstige">Sonstige</option>
+            </select>
+            <input id="kKasseSonstige" placeholder="Name der Krankenkasse" style="display:none;margin-top:8px" />
+          </div>
+          <div>
+            <label for="kBeginn">Beginn (Datum) <span class="muted">– der Arbeitsunfähigkeit</span></label>
+            <input id="kBeginn" type="date" required />
+          </div>
+          <div>
+            <label for="kEnde">Ende (Datum)</label>
+            <input id="kEnde" type="date" required />
+          </div>
+          <div>
+            <label for="kFeststellung">Tag der Feststellung</label>
+            <input id="kFeststellung" type="date" required />
+          </div>
+          <div>
+            <label>Typ</label>
+            <div class="optRow">
+              <label><input type="radio" name="kTyp" value="Erstmeldung" checked> Erstmeldung</label>
+              <label><input type="radio" name="kTyp" value="Folgemeldung"> Folgemeldung</label>
+            </div>
+          </div>
+          <div>
+            <label>Zusatzinfo</label>
+            <div class="optRow">
+              <label><input type="checkbox" name="kZusatz" value="Krankheit"> Krankheit</label>
+              <label><input type="checkbox" name="kZusatz" value="Arbeitsunfall"> Arbeitsunfall</label>
+              <label><input type="checkbox" name="kZusatz" value="Krankenhausaufenthalt"> Krankenhausaufenthalt</label>
+            </div>
+            <div id="kZusatzError" class="errorText">Bitte mindestens eine Zusatzinfo auswählen.</div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="summary" id="krankSummaryBox"></div>
+        </div>
+
+        <div class="section actions">
+          <button type="button" class="success" id="saveKrankBtn">Speichern (PDF)</button>
+          <button type="reset" class="danger">Formular zurücksetzen</button>
         </div>
       </form>
     </div>
@@ -296,13 +450,12 @@ async function ensurePdfLibs(){
   if(!window.html2canvas) await loadScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js');
   if(!window.jspdf) await loadScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
 }
-async function buildPdfBlob(){
+async function buildPdfBlob(cardEl){
   await ensurePdfLibs();
-  const card = document.querySelector('.card');
-  const toHide = card.querySelectorAll('.hints, .fields, .actions');
+  const toHide = cardEl.querySelectorAll('.hints, .fields, .actions');
   const prev = [];
   toHide.forEach(el=>{ prev.push(el.style.display); el.style.display='none'; });
-  const canvas = await html2canvas(card, {backgroundColor:'#ffffff', scale:2, useCORS:true});
+  const canvas = await html2canvas(cardEl, {backgroundColor:'#ffffff', scale:2, useCORS:true});
   toHide.forEach((el,i)=> el.style.display = prev[i]);
 
   const { jsPDF } = window.jspdf;
@@ -329,7 +482,7 @@ document.getElementById('mailtoBtn').addEventListener('click', async ()=>{
   btn.textContent = 'PDF wird erstellt …'; btn.disabled = true;
 
   try{
-    const blob = await buildPdfBlob();
+    const blob = await buildPdfBlob(document.querySelector('#screenZeit .card'));
     const file = new File([blob], filename, {type:'application/pdf'});
     if(navigator.canShare && navigator.canShare({files:[file]})){
       await navigator.share({files:[file], title: subject, text: body});
@@ -353,6 +506,94 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch((err) => console.warn('SW-Registrierung fehlgeschlagen:', err));
   });
 }
+
+// ===== Startauswahl: Zeit Korrektur / Digitale Krankmeldung =====
+function showScreen(id){
+  ['screenStart','screenZeit','screenKrank'].forEach(s=>{
+    document.getElementById(s).style.display = (s===id) ? '' : 'none';
+  });
+  window.scrollTo(0,0);
+}
+document.getElementById('goZeit').addEventListener('click', ()=> showScreen('screenZeit'));
+document.getElementById('goKrank').addEventListener('click', ()=> showScreen('screenKrank'));
+document.querySelectorAll('[data-back]').forEach(b=> b.addEventListener('click', ()=> showScreen('screenStart')));
+showScreen('screenStart');
+
+// ===== Digitale Krankmeldung =====
+const formKrank = document.getElementById('formKrank');
+
+function updateKrankPreview(){
+  const kSel = document.getElementById('kKasse');
+  const kOther = document.getElementById('kKasseSonstige');
+  const isOtherKasse = kSel.value === 'Sonstige';
+  kOther.style.display = isOtherKasse ? '' : 'none';
+  kOther.required = isOtherKasse;
+  if(!isOtherKasse) kOther.value = '';
+  const k = isOtherKasse ? kOther.value.trim() : kSel.value;
+
+  const v = document.getElementById('kVorname').value.trim();
+  const n = document.getElementById('kName').value.trim();
+  const beginn = fmtDateUS(document.getElementById('kBeginn').value);
+  const ende = fmtDateUS(document.getElementById('kEnde').value);
+  const fest = fmtDateUS(document.getElementById('kFeststellung').value);
+  const typ = document.querySelector('input[name="kTyp"]:checked');
+  const zusatz = Array.from(document.querySelectorAll('input[name="kZusatz"]:checked')).map(el => el.value).join(', ');
+
+  document.getElementById('krankSummaryBox').innerHTML = `<strong>Zusammenfassung</strong><br>
+  Mitarbeiter: <b>${v} ${n}</b><br>
+  Krankenkasse: <b>${k || '-'}</b><br>
+  Beginn (Datum der Arbeitsunfähigkeit): <b>${beginn || '-'}</b><br>
+  Ende (Datum): <b>${ende || '-'}</b><br>
+  Tag der Feststellung: <b>${fest || '-'}</b><br>
+  Typ: <b>${typ ? typ.value : '-'}</b><br>
+  Zusatzinfo: <b>${zusatz || '-'}</b>`;
+}
+formKrank.addEventListener('input', updateKrankPreview);
+formKrank.addEventListener('change', updateKrankPreview);
+formKrank.addEventListener('reset', ()=> setTimeout(updateKrankPreview, 0));
+updateKrankPreview();
+
+function requireZusatzinfo(){
+  const any = document.querySelectorAll('input[name="kZusatz"]:checked').length > 0;
+  if(!any){
+    const err = document.getElementById('kZusatzError');
+    err.style.display = 'block';
+    setTimeout(()=> err.style.display = 'none', 3000);
+  }
+  return any;
+}
+
+document.getElementById('saveKrankBtn').addEventListener('click', async ()=>{
+  if(!formKrank.reportValidity()) return;
+  if(!requireZusatzinfo()) return;
+  updateKrankPreview();
+
+  const vorname = document.getElementById('kVorname').value.trim();
+  const nachname = document.getElementById('kName').value.trim();
+  const beginn = fmtDateUS(document.getElementById('kBeginn').value);
+  const ende = fmtDateUS(document.getElementById('kEnde').value);
+  const filename = `Krankmeldung ${beginn} - Enddatum ${ende}, ${vorname} ${nachname}.pdf`;
+
+  const btn = document.getElementById('saveKrankBtn');
+  const oldLabel = btn.textContent;
+  btn.textContent = 'PDF wird erstellt …'; btn.disabled = true;
+  try{
+    const blob = await buildPdfBlob(document.querySelector('#screenKrank .card'));
+    const file = new File([blob], filename, {type:'application/pdf'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:'Krankmeldung'});
+    } else {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download=filename;
+      document.body.appendChild(a); a.click();
+      setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 800);
+    }
+  }catch(err){
+    console.warn('PDF/Share nicht möglich:', err);
+  }finally{
+    btn.textContent = oldLabel; btn.disabled = false;
+  }
+});
 </script>
 </body>
 </html>
