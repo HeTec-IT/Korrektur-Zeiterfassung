@@ -512,6 +512,11 @@ function showScreen(id){
   ['screenStart','screenZeit','screenKrank'].forEach(s=>{
     document.getElementById(s).style.display = (s===id) ? '' : 'none';
   });
+  // Canvas war beim initialen Laden versteckt (screenZeit display:none) und hatte
+  // dadurch clientWidth/clientHeight = 0 -> Signatur unbenutzbar. Hier korrigieren,
+  // sobald der Screen sichtbar ist (nur falls noch nicht korrekt dimensioniert,
+  // damit eine bereits gezeichnete Unterschrift beim erneuten Öffnen erhalten bleibt).
+  if(id === 'screenZeit' && canvas.width === 0) resizeCanvas();
   window.scrollTo(0,0);
 }
 document.getElementById('goZeit').addEventListener('click', ()=> showScreen('screenZeit'));
