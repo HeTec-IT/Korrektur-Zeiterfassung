@@ -641,7 +641,7 @@ document.getElementById('saveKrankBtn').addEventListener('click', async ()=>{
   const nachname = document.getElementById('kName').value.trim();
   const beginn = fmtDateUS(document.getElementById('kBeginn').value);
   const ende = fmtDateUS(document.getElementById('kEnde').value);
-  const filename = `Krankmeldung ${beginn} - Enddatum ${ende}, ${vorname} ${nachname}.pdf`;
+  const filename = `${beginn} - ${ende}, Krankmeldung, ${vorname} ${nachname}.pdf`;
 
   const btn = document.getElementById('saveKrankBtn');
   const oldLabel = btn.textContent;
