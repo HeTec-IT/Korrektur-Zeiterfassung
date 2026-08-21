@@ -52,6 +52,11 @@
   canvas.signature{width:100%;height:160px;border:1px dashed var(--border);border-radius:10px;background:#fff;touch-action:none}
   .summary{background:#f8fafc;border:1px dashed var(--border);padding:12px;border-radius:10px;font-size:14px}
   .summary b{color:var(--text)}
+
+  /* Nur während des PDF-Exports aktiv (siehe buildPdfBlob) – Vorschau am Handy bleibt kompakt */
+  .pdfMode .summary{font-size:21px;line-height:1.7;padding:26px}
+  .pdfMode .summary strong{display:block;font-size:27px;margin-bottom:12px}
+  .pdfMode .summary br{display:block;margin-top:9px}
   .muted{color:var(--sub);font-size:13px}
   .errorText{color:var(--error);font-size:13px;display:none;margin-top:6px}
 
@@ -165,6 +170,12 @@
           </div>
 
           <div>
+            <div class="optRow">
+              <label><input type="checkbox" id="wieSoll"> Gearbeitet wie Soll (Ist-Zeiten übernehmen)</label>
+            </div>
+          </div>
+
+          <div>
             <label for="istStart">Ist-Beginn (tatsächlich gearbeitet)</label>
             <input id="istStart" type="time" required />
           </div>
@@ -175,9 +186,19 @@
           </div>
 
           <div>
+            <label for="pauseStart">Mittagspause-Beginn</label>
+            <input id="pauseStart" type="time" />
+          </div>
+
+          <div>
+            <label for="pauseEnde">Mittagspause-Ende</label>
+            <input id="pauseEnde" type="time" />
+          </div>
+
+          <div>
             <label for="fehlstunden">Zeitverzug</label>
             <input id="fehlstunden" name="fehlstunden" readonly />
-            <div class="hint">+ = Mehrarbeit, − = Fehlzeit (Brutto, Pausen noch nicht abgezogen)<br>Hinweis: Basiert auf Angaben des Mitarbeiters – wird erst nach Prüfung der Zeiterfassung korrekt im System hinterlegt.<br>Bei „Vergessen einzustempeln (Tag)“: zeigt die volle Ist-Zeit (kein Soll-Abgleich, da im System noch nichts erfasst ist).</div>
+            <div class="hint">+ = Mehrarbeit, − = Fehlzeit. Bei ausgefüllter Mittagspause wird die Abweichung von der Standard-Pause (60 Min.) automatisch mit eingerechnet.<br>Hinweis: Basiert auf Angaben des Mitarbeiters – wird erst nach Prüfung der Zeiterfassung korrekt im System hinterlegt.<br>Bei „Vergessen einzustempeln (Tag)“: zeigt die volle Ist-Zeit (kein Soll-Abgleich, da im System noch nichts erfasst ist).</div>
           </div>
 
           <div>
@@ -186,6 +207,7 @@
               <option value="" selected disabled>Bitte auswählen …</option>
               <option>Vergessen einzustempeln (Tag)</option>
               <option>Vergessen nach der Pause einzustempeln</option>
+              <option>Mittagspause falsch gestempelt</option>
               <option>Systeme gingen nicht</option>
               <option>Verkaufsoffener Sonntag</option>
               <option>Externe Schulung</option>
@@ -344,7 +366,18 @@ function minutesToHhmm(mins){
 function minutesToDecimalHours(mins){ return (mins/60).toFixed(2).replace('.', ','); }
 const sollStart=document.getElementById('sollStart'), sollEnde=document.getElementById('sollEnde');
 const istStart=document.getElementById('istStart'), istEnde=document.getElementById('istEnde');
+const pauseStart=document.getElementById('pauseStart'), pauseEnde=document.getElementById('pauseEnde');
+const wieSoll=document.getElementById('wieSoll');
+function syncIstFromSoll(){
+  if(!wieSoll.checked) return;
+  istStart.value = sollStart.value;
+  istEnde.value = sollEnde.value;
+}
+wieSoll.addEventListener('change', syncIstFromSoll);
+sollStart.addEventListener('change', syncIstFromSoll);
+sollEnde.addEventListener('change', syncIstFromSoll);
 const fehl=document.getElementById('fehlstunden');
+const STANDARD_PAUSE_MIN = 60; // angenommene Standard-Mittagspause laut Arbeitsplan, in Minuten
 function calcDelay(){
   const sS=toMinutes(sollStart.value), sE=toMinutes(sollEnde.value);
   const iS=toMinutes(istStart.value), iE=toMinutes(istEnde.value);
@@ -353,7 +386,17 @@ function calcDelay(){
   if(soll<0) soll+=1440;
   if(ist<0) ist+=1440;
   const ganzerTagVergessen = document.getElementById('grund').value === 'Vergessen einzustempeln (Tag)';
-  fehl.value = minutesToHhmm(ganzerTagVergessen ? ist : ist-soll);
+  if(ganzerTagVergessen){ fehl.value = minutesToHhmm(ist); return; }
+
+  let delay = ist - soll;
+  const pS=toMinutes(pauseStart.value), pE=toMinutes(pauseEnde.value);
+  if(pS!==null && pE!==null){
+    let pauseIst = pE - pS;
+    if(pauseIst<0) pauseIst+=1440;
+    // Abweichung von der Standard-Pause: kürzere Pause als üblich -> mehr netto gearbeitet (+), längere Pause -> weniger (-)
+    delay += (STANDARD_PAUSE_MIN - pauseIst);
+  }
+  fehl.value = minutesToHhmm(delay);
 }
 
 // Signatur
@@ -406,6 +449,7 @@ function updateAll(){
   const g=document.getElementById('grund').value;
   const ft=document.getElementById('freitext').value.trim();
   const ss=sollStart.value, se=sollEnde.value, is=istStart.value, ie=istEnde.value;
+  const ps=pauseStart.value, pe=pauseEnde.value;
   let istBrutto = '';
   const iS=toMinutes(is), iE=toMinutes(ie);
   if(iS!==null && iE!==null){
@@ -419,6 +463,7 @@ function updateAll(){
   Korrektur für Datum: <b>${d || '-'}</b><br>
   Normale Arbeitszeit (Soll): <b>${ss||'-'} – ${se||'-'}</b><br>
   Korrekte Arbeitszeit (Ist): <b>${is||'-'} – ${ie||'-'}${istBrutto}</b><br>
+  Mittagspause: <b>${ps||'-'} – ${pe||'-'}</b><br>
   Zeitverzug: <b>${fehl.value || '-'}</b> <span class="muted">(Angabe Mitarbeiter – wird nach Prüfung final im System hinterlegt)</span><br>
   Grund: <b>${g||'-'}</b><br>
   Ausgefüllt am: <b>${an||'-'}</b><br>
@@ -455,7 +500,9 @@ async function buildPdfBlob(cardEl){
   const toHide = cardEl.querySelectorAll('.hints, .fields, .actions');
   const prev = [];
   toHide.forEach(el=>{ prev.push(el.style.display); el.style.display='none'; });
+  cardEl.classList.add('pdfMode');
   const canvas = await html2canvas(cardEl, {backgroundColor:'#ffffff', scale:2, useCORS:true});
+  cardEl.classList.remove('pdfMode');
   toHide.forEach((el,i)=> el.style.display = prev[i]);
 
   const { jsPDF } = window.jspdf;
