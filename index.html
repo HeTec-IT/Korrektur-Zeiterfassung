@@ -186,6 +186,12 @@
           </div>
 
           <div>
+            <div class="optRow">
+              <label><input type="checkbox" id="pausenabzug"> Pausenabzug (60 Min. pauschal)</label>
+            </div>
+          </div>
+
+          <div>
             <label for="pauseStart">Mittagspause-Beginn</label>
             <input id="pauseStart" type="time" />
           </div>
@@ -376,6 +382,15 @@ function syncIstFromSoll(){
 wieSoll.addEventListener('change', syncIstFromSoll);
 sollStart.addEventListener('change', syncIstFromSoll);
 sollEnde.addEventListener('change', syncIstFromSoll);
+
+const pausenabzug=document.getElementById('pausenabzug');
+function togglePausenabzug(){
+  const on = pausenabzug.checked;
+  pauseStart.disabled = on;
+  pauseEnde.disabled = on;
+  if(on){ pauseStart.value=''; pauseEnde.value=''; }
+}
+pausenabzug.addEventListener('change', togglePausenabzug);
 const fehl=document.getElementById('fehlstunden');
 const STANDARD_PAUSE_MIN = 60; // angenommene Standard-Mittagspause laut Arbeitsplan, in Minuten
 function calcDelay(){
@@ -450,6 +465,7 @@ function updateAll(){
   const ft=document.getElementById('freitext').value.trim();
   const ss=sollStart.value, se=sollEnde.value, is=istStart.value, ie=istEnde.value;
   const ps=pauseStart.value, pe=pauseEnde.value;
+  const mittagspauseText = pausenabzug.checked ? `${STANDARD_PAUSE_MIN} Min. (pauschal)` : `${ps||'-'} – ${pe||'-'}`;
   let istBrutto = '';
   const iS=toMinutes(is), iE=toMinutes(ie);
   if(iS!==null && iE!==null){
@@ -463,7 +479,7 @@ function updateAll(){
   Korrektur für Datum: <b>${d || '-'}</b><br>
   Normale Arbeitszeit (Soll): <b>${ss||'-'} – ${se||'-'}</b><br>
   Korrekte Arbeitszeit (Ist): <b>${is||'-'} – ${ie||'-'}${istBrutto}</b><br>
-  Mittagspause: <b>${ps||'-'} – ${pe||'-'}</b><br>
+  Mittagspause: <b>${mittagspauseText}</b><br>
   Zeitverzug: <b>${fehl.value || '-'}</b> <span class="muted">(Angabe Mitarbeiter – wird nach Prüfung final im System hinterlegt)</span><br>
   Grund: <b>${g||'-'}</b><br>
   Ausgefüllt am: <b>${an||'-'}</b><br>
@@ -475,6 +491,7 @@ document.getElementById('form').addEventListener('reset', ()=>{
   setTimeout(()=>{
     ctx.clearRect(0,0,canvas.width,canvas.height);
     document.getElementById('datumHeute').valueAsDate = new Date();
+    togglePausenabzug();
     updateAll();
   }, 0);
 });
