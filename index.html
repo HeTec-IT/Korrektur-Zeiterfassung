@@ -204,7 +204,6 @@
           <div>
             <label for="fehlstunden">Zeitverzug</label>
             <input id="fehlstunden" name="fehlstunden" readonly />
-            <div class="hint">+ = Mehrarbeit, − = Fehlzeit. Bei ausgefüllter Mittagspause wird die Abweichung von der Standard-Pause (60 Min.) automatisch mit eingerechnet.<br>Hinweis: Basiert auf Angaben des Mitarbeiters – wird erst nach Prüfung der Zeiterfassung korrekt im System hinterlegt.<br>Bei „Vergessen einzustempeln (Tag)“: zeigt die volle Ist-Zeit (kein Soll-Abgleich, da im System noch nichts erfasst ist).</div>
           </div>
 
           <div>
@@ -235,6 +234,7 @@
 
         <div class="section">
           <div class="summary" id="summaryBox"></div>
+          <div class="hint" style="margin-top:10px">+ = Mehrarbeit, − = Fehlzeit. Bei ausgefüllter Mittagspause wird die Abweichung von der Standard-Pause (60 Min.) automatisch mit eingerechnet.<br>Hinweis: Basiert auf Angaben des Mitarbeiters – wird erst nach Prüfung der Zeiterfassung korrekt im System hinterlegt.<br>Bei „Vergessen einzustempeln (Tag)“: zeigt die volle Ist-Zeit (kein Soll-Abgleich, da im System noch nichts erfasst ist).</div>
         </div>
 
         <div class="section">
@@ -540,7 +540,7 @@ document.getElementById('mailtoBtn').addEventListener('click', async ()=>{
   const d=fmtDateUS(document.getElementById('datumHeute').value);
   const subject = `Korrektur Zeiterfassung – ${v} ${n}`;
   const body = document.getElementById('summaryBox').innerText.replace(/\u00A0/g,' ');
-  const filename = `${d}, ${n} ${v}, Zeitkorrektur.pdf`;
+  const filename = `${d} - ${v} ${n} Zeitkorrektur.pdf`;
   const btn = document.getElementById('mailtoBtn');
   const oldLabel = btn.textContent;
   btn.textContent = 'PDF wird erstellt …'; btn.disabled = true;
