@@ -53,10 +53,15 @@
   .summary{background:#f8fafc;border:1px dashed var(--border);padding:12px;border-radius:10px;font-size:14px}
   .summary b{color:var(--text)}
 
-  /* Nur während des PDF-Exports aktiv (siehe buildPdfBlob) – Vorschau am Handy bleibt kompakt */
-  .pdfMode .summary{font-size:21px;line-height:1.7;padding:26px}
-  .pdfMode .summary strong{display:block;font-size:27px;margin-bottom:12px}
-  .pdfMode .summary br{display:block;margin-top:9px}
+  /* Nur während des PDF-Exports aktiv (siehe buildPdfBlob) – Vorschau am Handy bleibt kompakt.
+     Karte wird beim Export breiter, damit auch längere Zeilen (z.B. "Korrekte Arbeitszeit (Ist): ...")
+     bei der größeren Schrift nicht mitten im Wert umbrechen. Die Signatur-Canvas wird bewusst auf ihrer
+     normalen Breite gehalten (sonst würde die vorhandene Zeichnung beim Verbreitern der Karte verzerrt/gestreckt). */
+  .pdfMode{width:760px !important}
+  .pdfMode canvas.signature{width:330px !important}
+  .pdfMode .summary{font-size:17px;line-height:1.55;padding:24px}
+  .pdfMode .summary strong{display:block;font-size:22px;margin-bottom:10px}
+  .pdfMode .summary br{display:block;margin-top:7px}
   .muted{color:var(--sub);font-size:13px}
   .errorText{color:var(--error);font-size:13px;display:none;margin-top:6px}
 
@@ -419,10 +424,27 @@ const canvas=document.getElementById('sig'), ctx=canvas.getContext('2d');
 let drawing=false, last=null;
 function resizeCanvas(){
   const ratio=Math.max(window.devicePixelRatio||1,1);
-  canvas.width=canvas.clientWidth*ratio;
-  canvas.height=canvas.clientHeight*ratio;
+  const newW=Math.round(canvas.clientWidth*ratio), newH=Math.round(canvas.clientHeight*ratio);
+  if(newW===0 || newH===0) return; // Screen gerade nicht sichtbar -> nichts tun (kein Datenverlust)
+  if(newW===canvas.width && newH===canvas.height) return; // KEINE echte Größenänderung -> NICHT löschen (z.B. Adressleiste am Handy triggert sonst grundlos ein Resize-Event und wischt die Unterschrift weg)
+  // Bei echter Größenänderung (z.B. Drehung des Geräts) vorhandene Zeichnung retten und danach wiederherstellen
+  let saved=null;
+  if(canvas.width>0 && canvas.height>0 && hasSignatureRaw()){
+    saved=document.createElement('canvas');
+    saved.width=canvas.width; saved.height=canvas.height;
+    saved.getContext('2d').drawImage(canvas,0,0);
+  }
+  canvas.width=newW; canvas.height=newH;
   ctx.scale(ratio,ratio);
   ctx.lineWidth=2; ctx.lineCap='round'; ctx.strokeStyle='#111827';
+  if(saved) ctx.drawImage(saved, 0, 0, saved.width/ratio, saved.height/ratio);
+}
+function hasSignatureRaw(){
+  try{
+    const px=ctx.getImageData(0,0,canvas.width,canvas.height).data;
+    for(let i=3;i<px.length;i+=4) if(px[i]!==0) return true;
+  }catch(e){}
+  return false;
 }
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
@@ -438,9 +460,7 @@ canvas.addEventListener('touchmove', e=>{ e.preventDefault(); const r=canvas.get
 canvas.addEventListener('touchend', endDraw);
 document.getElementById('clearSig').addEventListener('click', ()=> ctx.clearRect(0,0,canvas.width,canvas.height));
 function hasSignature(){
-  const px=ctx.getImageData(0,0,canvas.width,canvas.height).data;
-  for(let i=3;i<px.length;i+=4) if(px[i]!==0) return true;
-  return false;
+  return hasSignatureRaw();
 }
 function requireSignature(){
   if(!hasSignature()){
@@ -527,7 +547,7 @@ async function buildPdfBlob(cardEl){
   const pageW = pdf.internal.pageSize.getWidth(), pageH = pdf.internal.pageSize.getHeight();
   const imgW = pageW - 20;
   const imgH = Math.min(canvas.height*imgW/canvas.width, pageH-20);
-  pdf.addImage(canvas.toDataURL('image/jpeg',0.95), 'JPEG', 10, 10, imgW, imgH);
+  pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 10, 10, imgW, imgH);
   return pdf.output('blob');
 }
 
@@ -546,6 +566,14 @@ document.getElementById('mailtoBtn').addEventListener('click', async ()=>{
   btn.textContent = 'PDF wird erstellt …'; btn.disabled = true;
 
   try{
+    // html2canvas/jsPDF laden dauert (CDN) - in dieser Zeit könnte ein Resize-Event
+    // o.ä. dazwischenfunken. Deshalb JETZT, unmittelbar vor der eigentlichen
+    // PDF-Erstellung, nochmal zwingend prüfen. Ohne Unterschrift: kein PDF.
+    await ensurePdfLibs();
+    if(!requireSignature()){
+      btn.textContent = oldLabel; btn.disabled = false;
+      return;
+    }
     const blob = await buildPdfBlob(document.querySelector('#screenZeit .card'));
     const file = new File([blob], filename, {type:'application/pdf'});
     if(navigator.canShare && navigator.canShare({files:[file]})){
@@ -558,10 +586,10 @@ document.getElementById('mailtoBtn').addEventListener('click', async ()=>{
     setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 800);
   }catch(err){
     console.warn('PDF/Share nicht möglich, nutze mailto-Fallback:', err);
+    window.location.href = `mailto:zeiterfassung@hetec-gmbh.de?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   }finally{
     btn.textContent = oldLabel; btn.disabled = false;
   }
-  window.location.href = `mailto:zeiterfassung@hetec-gmbh.de?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 });
 
 // PWA: Service Worker registrieren (Installierbarkeit + Offline)
@@ -580,7 +608,13 @@ function showScreen(id){
   // dadurch clientWidth/clientHeight = 0 -> Signatur unbenutzbar. Hier korrigieren,
   // sobald der Screen sichtbar ist (nur falls noch nicht korrekt dimensioniert,
   // damit eine bereits gezeichnete Unterschrift beim erneuten Öffnen erhalten bleibt).
-  if(id === 'screenZeit' && canvas.width === 0) resizeCanvas();
+  // Canvas war beim initialen Laden versteckt (screenZeit display:none) und hatte dadurch
+  // clientWidth/clientHeight = 0 -> resizeCanvas() ist da ein no-op (siehe dortige Guards).
+  // Hier erneut aufrufen, sobald der Screen sichtbar ist - resizeCanvas() selbst prüft bereits
+  // zuverlässig, ob eine echte Größenanpassung nötig ist (kein unnötiges Löschen einer
+  // vorhandenen Unterschrift, aber auch kein Hängenbleiben bei falscher/veralteter Größe,
+  // was sonst zu einem Versatz zwischen Fingerposition und gezeichneter Linie führt).
+  if(id === 'screenZeit') resizeCanvas();
   window.scrollTo(0,0);
 }
 document.getElementById('goZeit').addEventListener('click', ()=> showScreen('screenZeit'));
