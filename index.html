@@ -53,15 +53,6 @@
   .summary{background:#f8fafc;border:1px dashed var(--border);padding:12px;border-radius:10px;font-size:14px}
   .summary b{color:var(--text)}
 
-  /* Nur während des PDF-Exports aktiv (siehe buildPdfBlob) – Vorschau am Handy bleibt kompakt.
-     Karte wird beim Export breiter, damit auch längere Zeilen (z.B. "Korrekte Arbeitszeit (Ist): ...")
-     bei der größeren Schrift nicht mitten im Wert umbrechen. Die Signatur-Canvas wird bewusst auf ihrer
-     normalen Breite gehalten (sonst würde die vorhandene Zeichnung beim Verbreitern der Karte verzerrt/gestreckt). */
-  .pdfMode{width:760px !important}
-  .pdfMode canvas.signature{width:330px !important}
-  .pdfMode .summary{font-size:17px;line-height:1.55;padding:24px}
-  .pdfMode .summary strong{display:block;font-size:22px;margin-bottom:10px}
-  .pdfMode .summary br{display:block;margin-top:7px}
   .muted{color:var(--sub);font-size:13px}
   .errorText{color:var(--error);font-size:13px;display:none;margin-top:6px}
 
@@ -233,7 +224,7 @@
 
           <div>
             <label for="freitext">Bemerkung (optional)</label>
-            <textarea id="freitext" name="freitext" placeholder="weitere Details …"></textarea>
+            <textarea id="freitext" name="freitext" maxlength="400" placeholder="weitere Details …"></textarea>
           </div>
         </div>
 
@@ -473,6 +464,39 @@ function requireSignature(){
 }
 
 // Zusammenfassung: live bei jeder Eingabe aktualisiert
+function computeZeitFields(){
+  const v=document.getElementById('vorname').value.trim();
+  const n=document.getElementById('name').value.trim();
+  const d=fmtDateUS(document.getElementById('vorfallsdatum').value);
+  const an=fmtDateUS(document.getElementById('datumHeute').value);
+  const g=document.getElementById('grund').value;
+  const ft=document.getElementById('freitext').value.trim();
+  const ss=sollStart.value, se=sollEnde.value, is=istStart.value, ie=istEnde.value;
+  const ps=pauseStart.value, pe=pauseEnde.value;
+  const mittagspauseText = pausenabzug.checked ? `${STANDARD_PAUSE_MIN} Min. (pauschal)` : `${ps||'-'} – ${pe||'-'}`;
+  let istBrutto = '';
+  const iS=toMinutes(is), iE=toMinutes(ie);
+  if(iS!==null && iE!==null){
+    let m = iE - iS;
+    if(m<0) m += 1440;
+    istBrutto = ` – ${minutesToDecimalHours(m)} Std. brutto`;
+  }
+  return {
+    vorname:v, nachname:n, datum:d, ausgefuellt:an,
+    rows: [
+      ['MITARBEITER', `${v} ${n}`, null],
+      ['KORREKTUR FÜR DATUM', d || '-', null],
+      ['NORMALE ARBEITSZEIT (SOLL)', `${ss||'-'} – ${se||'-'}`, null],
+      ['KORREKTE ARBEITSZEIT (IST)', `${is||'-'} – ${ie||'-'}${istBrutto}`, null],
+      ['MITTAGSPAUSE', mittagspauseText, null],
+      ['ZEITVERZUG', fehl.value || '-', 'Angabe Mitarbeiter – wird nach Prüfung final im System hinterlegt'],
+      ['GRUND', g || '-', null],
+      ['AUSGEFÜLLT AM', an || '-', null],
+      ['BEMERKUNG', ft || '—', null],
+    ]
+  };
+}
+
 function updateAll(){
   calcDelay();
   const v=document.getElementById('vorname').value.trim();
@@ -529,25 +553,111 @@ function loadScript(src){
   });
 }
 async function ensurePdfLibs(){
-  if(!window.html2canvas) await loadScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js');
   if(!window.jspdf) await loadScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
 }
-async function buildPdfBlob(cardEl){
-  await ensurePdfLibs();
-  const toHide = cardEl.querySelectorAll('.hints, .fields, .actions');
-  const prev = [];
-  toHide.forEach(el=>{ prev.push(el.style.display); el.style.display='none'; });
-  cardEl.classList.add('pdfMode');
-  const canvas = await html2canvas(cardEl, {backgroundColor:'#ffffff', scale:2, useCORS:true});
-  cardEl.classList.remove('pdfMode');
-  toHide.forEach((el,i)=> el.style.display = prev[i]);
 
+// jsPDFs Standardschrift (Helvetica/WinAnsi) kennt kein echtes Minuszeichen U+2212 -
+// wird sonst falsch dargestellt. Normaler Bindestrich ist visuell praktisch identisch.
+function pdfSafe(str){
+  return String(str).replace(/\u2212/g, '-');
+}
+
+async function buildNativeSummaryPdf({rows, hintLines, signatureCanvas, signatureLabel}){
+  await ensurePdfLibs();
   const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF({orientation:'portrait', unit:'mm', format:'a4'});
-  const pageW = pdf.internal.pageSize.getWidth(), pageH = pdf.internal.pageSize.getHeight();
-  const imgW = pageW - 20;
-  const imgH = Math.min(canvas.height*imgW/canvas.width, pageH-20);
-  pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 10, 10, imgW, imgH);
+  const pdf = new jsPDF({orientation:'portrait', unit:'pt', format:'a4'});
+  const W = pdf.internal.pageSize.getWidth(), H = pdf.internal.pageSize.getHeight();
+  const margin = 42, contentW = W - 2*margin, pad = 22;
+  const DARK='#0f172a', SUB='#64748b', BORDER='#e2e8f0', CARD='#f8fafc';
+  const LABEL_SIZE=9, VALUE_SIZE=15.5, NOTE_SIZE=8.5;
+  const LABEL_VALUE_GAP=5, NOTE_GAP=4, GROUP_GAP=15;
+
+  function fieldHeight(val, note){
+    pdf.setFont('helvetica','bold'); pdf.setFontSize(VALUE_SIZE);
+    const lines = pdf.splitTextToSize(pdfSafe(val), contentW - 2*pad);
+    let h = LABEL_SIZE + LABEL_VALUE_GAP + lines.length*(VALUE_SIZE*1.12);
+    if(note){
+      pdf.setFont('helvetica','normal'); pdf.setFontSize(NOTE_SIZE);
+      const nl = pdf.splitTextToSize(pdfSafe(note), contentW - 2*pad);
+      h += NOTE_GAP + nl.length*(NOTE_SIZE*1.25);
+    }
+    return h;
+  }
+
+  let cardH = pad*2 + 30;
+  rows.forEach(([l,v,n]) => cardH += fieldHeight(v,n) + GROUP_GAP);
+  cardH -= GROUP_GAP;
+
+  const cardTop = 50;
+  pdf.setFillColor(CARD); pdf.setDrawColor(BORDER);
+  pdf.roundedRect(margin, cardTop, contentW, cardH, 14, 14, 'FD');
+
+  let y = cardTop + pad + 20;
+  pdf.setTextColor(DARK); pdf.setFont('helvetica','bold'); pdf.setFontSize(20);
+  pdf.text('Zusammenfassung', margin+pad, y);
+  y += 10;
+
+  rows.forEach(([label, val, note]) => {
+    y += LABEL_SIZE;
+    pdf.setFont('helvetica','bold'); pdf.setFontSize(LABEL_SIZE); pdf.setTextColor(SUB);
+    pdf.text(pdfSafe(label), margin+pad, y);
+    y += LABEL_VALUE_GAP;
+
+    pdf.setFont('helvetica','bold'); pdf.setFontSize(VALUE_SIZE); pdf.setTextColor(DARK);
+    const lines = pdf.splitTextToSize(pdfSafe(val), contentW - 2*pad);
+    lines.forEach(line => {
+      y += VALUE_SIZE;
+      pdf.text(line, margin+pad, y);
+      y += VALUE_SIZE*0.12;
+    });
+
+    if(note){
+      y += NOTE_GAP;
+      pdf.setFont('helvetica','normal'); pdf.setFontSize(NOTE_SIZE); pdf.setTextColor(SUB);
+      const nl = pdf.splitTextToSize(pdfSafe(note), contentW - 2*pad);
+      nl.forEach(line => { y += NOTE_SIZE; pdf.text(line, margin+pad, y); y += NOTE_SIZE*0.25; });
+    }
+    y += GROUP_GAP;
+  });
+
+  let hy = cardTop + cardH + 22;
+  if(hintLines && hintLines.length){
+    pdf.setFont('helvetica','normal'); pdf.setFontSize(8.5); pdf.setTextColor(SUB);
+    hintLines.forEach(txt=>{
+      const wl = pdf.splitTextToSize(pdfSafe(txt), contentW);
+      wl.forEach(line=>{ pdf.text(line, margin, hy); hy += 11.5; });
+      hy += 2;
+    });
+  }
+
+  if(signatureCanvas){
+    const sigBoxH = 110;
+    let sigLabelY = hy + 10;
+    let sigBoxY = sigLabelY + 14;
+    // Passt die Unterschrift nicht mehr auf die Seite -> neue Seite dafür (wichtigstes Element, darf nie abgeschnitten werden)
+    if(sigBoxY + sigBoxH > H - margin){
+      pdf.addPage();
+      sigLabelY = margin + 10;
+      sigBoxY = sigLabelY + 14;
+    }
+    pdf.setFont('helvetica','normal'); pdf.setFontSize(10); pdf.setTextColor(SUB);
+    pdf.text(pdfSafe(signatureLabel || 'Digitale Unterschrift'), margin, sigLabelY);
+
+    pdf.setDrawColor(BORDER);
+    pdf.setLineDashPattern([3,3], 0);
+    pdf.roundedRect(margin, sigBoxY, contentW, sigBoxH, 10, 10, 'S');
+    pdf.setLineDashPattern([], 0);
+
+    // Unterschrift direkt aus der Zeichenfläche (volle Auflösung, kein Umweg über html2canvas)
+    const sigDataUrl = signatureCanvas.toDataURL('image/png');
+    const sigRatio = signatureCanvas.width / signatureCanvas.height;
+    const innerPad = 12;
+    let dw = contentW - 2*innerPad, dh = dw/sigRatio;
+    if(dh > sigBoxH - 2*innerPad){ dh = sigBoxH - 2*innerPad; dw = dh*sigRatio; }
+    const dx = margin + (contentW-dw)/2, dy = sigBoxY + (sigBoxH-dh)/2;
+    pdf.addImage(sigDataUrl, 'PNG', dx, dy, dw, dh);
+  }
+
   return pdf.output('blob');
 }
 
@@ -555,26 +665,34 @@ async function buildPdfBlob(cardEl){
 document.getElementById('mailtoBtn').addEventListener('click', async ()=>{
   if(!requireSignature()) return;
   updateAll();
-  const v=document.getElementById('vorname').value.trim();
-  const n=document.getElementById('name').value.trim();
-  const d=fmtDateUS(document.getElementById('datumHeute').value);
-  const subject = `Korrektur Zeiterfassung – ${v} ${n}`;
+  const data = computeZeitFields();
+  const subject = `Korrektur Zeiterfassung – ${data.vorname} ${data.nachname}`;
   const body = document.getElementById('summaryBox').innerText.replace(/\u00A0/g,' ');
-  const filename = `${d} - ${v} ${n} Zeitkorrektur.pdf`;
+  const filename = `${data.datum} - ${data.vorname} ${data.nachname} Zeitkorrektur.pdf`;
   const btn = document.getElementById('mailtoBtn');
   const oldLabel = btn.textContent;
   btn.textContent = 'PDF wird erstellt …'; btn.disabled = true;
 
   try{
-    // html2canvas/jsPDF laden dauert (CDN) - in dieser Zeit könnte ein Resize-Event
-    // o.ä. dazwischenfunken. Deshalb JETZT, unmittelbar vor der eigentlichen
+    // jsPDF laden dauert (CDN) - in dieser Zeit könnte ein Resize-Event o.ä.
+    // dazwischenfunken. Deshalb JETZT, unmittelbar vor der eigentlichen
     // PDF-Erstellung, nochmal zwingend prüfen. Ohne Unterschrift: kein PDF.
     await ensurePdfLibs();
     if(!requireSignature()){
       btn.textContent = oldLabel; btn.disabled = false;
       return;
     }
-    const blob = await buildPdfBlob(document.querySelector('#screenZeit .card'));
+    const hintLines = [
+      '+ = Mehrarbeit, − = Fehlzeit. Bei ausgefüllter Mittagspause wird die Abweichung von der Standard-Pause (60 Min.) automatisch mit eingerechnet.',
+      'Hinweis: Basiert auf Angaben des Mitarbeiters – wird erst nach Prüfung der Zeiterfassung korrekt im System hinterlegt.',
+      'Bei „Vergessen einzustempeln (Tag)“: zeigt die volle Ist-Zeit (kein Soll-Abgleich, da im System noch nichts erfasst ist).'
+    ];
+    const blob = await buildNativeSummaryPdf({
+      rows: data.rows,
+      hintLines,
+      signatureCanvas: canvas,
+      signatureLabel: `Digitale Unterschrift — ${data.vorname} ${data.nachname}`
+    });
     const file = new File([blob], filename, {type:'application/pdf'});
     if(navigator.canShare && navigator.canShare({files:[file]})){
       await navigator.share({files:[file], title: subject, text: body});
@@ -625,6 +743,32 @@ showScreen('screenStart');
 // ===== Digitale Krankmeldung =====
 const formKrank = document.getElementById('formKrank');
 
+function computeKrankFields(){
+  const kSel = document.getElementById('kKasse');
+  const kOther = document.getElementById('kKasseSonstige');
+  const isOtherKasse = kSel.value === 'Sonstige';
+  const k = isOtherKasse ? kOther.value.trim() : kSel.value;
+  const v = document.getElementById('kVorname').value.trim();
+  const n = document.getElementById('kName').value.trim();
+  const beginn = fmtDateUS(document.getElementById('kBeginn').value);
+  const ende = fmtDateUS(document.getElementById('kEnde').value);
+  const fest = fmtDateUS(document.getElementById('kFeststellung').value);
+  const typ = document.querySelector('input[name="kTyp"]:checked');
+  const zusatz = Array.from(document.querySelectorAll('input[name="kZusatz"]:checked')).map(el => el.value).join(', ');
+  return {
+    vorname:v, nachname:n, beginn, ende,
+    rows: [
+      ['MITARBEITER', `${v} ${n}`, null],
+      ['KRANKENKASSE', k || '-', null],
+      ['BEGINN (DATUM DER ARBEITSUNFÄHIGKEIT)', beginn || '-', null],
+      ['ENDE (DATUM)', ende || '-', null],
+      ['TAG DER FESTSTELLUNG', fest || '-', null],
+      ['TYP', typ ? typ.value : '-', null],
+      ['ZUSATZINFO', zusatz || '-', null],
+    ]
+  };
+}
+
 function updateKrankPreview(){
   const kSel = document.getElementById('kKasse');
   const kOther = document.getElementById('kKasseSonstige');
@@ -671,17 +815,14 @@ document.getElementById('saveKrankBtn').addEventListener('click', async ()=>{
   if(!requireZusatzinfo()) return;
   updateKrankPreview();
 
-  const vorname = document.getElementById('kVorname').value.trim();
-  const nachname = document.getElementById('kName').value.trim();
-  const beginn = fmtDateUS(document.getElementById('kBeginn').value);
-  const ende = fmtDateUS(document.getElementById('kEnde').value);
-  const filename = `${beginn} - ${ende}, Krankmeldung, ${vorname} ${nachname}.pdf`;
+  const data = computeKrankFields();
+  const filename = `${data.beginn} - ${data.ende}, Krankmeldung, ${data.vorname} ${data.nachname}.pdf`;
 
   const btn = document.getElementById('saveKrankBtn');
   const oldLabel = btn.textContent;
   btn.textContent = 'PDF wird erstellt …'; btn.disabled = true;
   try{
-    const blob = await buildPdfBlob(document.querySelector('#screenKrank .card'));
+    const blob = await buildNativeSummaryPdf({ rows: data.rows });
     const file = new File([blob], filename, {type:'application/pdf'});
     if(navigator.canShare && navigator.canShare({files:[file]})){
       await navigator.share({files:[file], title:'Krankmeldung'});
