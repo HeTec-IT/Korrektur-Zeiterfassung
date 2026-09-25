@@ -544,7 +544,7 @@ document.getElementById('form').addEventListener('reset', ()=>{
 document.getElementById('datumHeute').valueAsDate = new Date();
 updateAll();
 
-// PDF aus Zusammenfassung + Unterschrift erzeugen (html2canvas + jsPDF)
+// Druckfertiges A4-Formular mit Vektortext und digitaler Unterschrift (jsPDF)
 function loadScript(src){
   return new Promise((resolve,reject)=>{
     const s=document.createElement('script');
@@ -562,102 +562,97 @@ function pdfSafe(str){
   return String(str).replace(/\u2212/g, '-');
 }
 
-async function buildNativeSummaryPdf({rows, hintLines, signatureCanvas, signatureLabel}){
+async function buildNativeSummaryPdf({rows, hintLines=[], signatureCanvas, signatureLabel}){
   await ensurePdfLibs();
-  const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF({orientation:'portrait', unit:'pt', format:'a4'});
-  const W = pdf.internal.pageSize.getWidth(), H = pdf.internal.pageSize.getHeight();
-  const margin = 42, contentW = W - 2*margin, pad = 22;
-  const DARK='#0f172a', SUB='#64748b', BORDER='#e2e8f0', CARD='#f8fafc';
-  const LABEL_SIZE=9, VALUE_SIZE=15.5, NOTE_SIZE=8.5;
-  const LABEL_VALUE_GAP=5, NOTE_GAP=4, GROUP_GAP=15;
-
-  function fieldHeight(val, note){
-    pdf.setFont('helvetica','bold'); pdf.setFontSize(VALUE_SIZE);
-    const lines = pdf.splitTextToSize(pdfSafe(val), contentW - 2*pad);
-    let h = LABEL_SIZE + LABEL_VALUE_GAP + lines.length*(VALUE_SIZE*1.12);
-    if(note){
-      pdf.setFont('helvetica','normal'); pdf.setFontSize(NOTE_SIZE);
-      const nl = pdf.splitTextToSize(pdfSafe(note), contentW - 2*pad);
-      h += NOTE_GAP + nl.length*(NOTE_SIZE*1.25);
-    }
-    return h;
+  const {jsPDF}=window.jspdf;
+  const pdf=new jsPDF({orientation:'portrait',unit:'pt',format:'a4'});
+  const W=pdf.internal.pageSize.getWidth(), H=pdf.internal.pageSize.getHeight();
+  const m=42, width=W-2*m, bottom=H-48;
+  const ink='#172b40', muted='#526171', border='#aab5bf', pale='#edf2f6';
+  const correction=rows.some(r=>r[0]==='ZEITVERZUG');
+  const title=correction?'Korrektur der Zeiterfassung':'Krankmeldung';
+  const person=rows.find(r=>r[0]==='MITARBEITER')?.[1] || '';
+  const dateText=v=>pdfSafe(v).replace(/\b(\d{4})[.-](\d{2})[.-](\d{2})\b/g,'$3.$2.$1');
+  function text(s,x,y,size=10,bold=false,color=ink){
+    pdf.setFont('helvetica',bold?'bold':'normal');pdf.setFontSize(size);pdf.setTextColor(color);
+    pdf.text(dateText(s),x,y);
   }
-
-  let cardH = pad*2 + 30;
-  rows.forEach(([l,v,n]) => cardH += fieldHeight(v,n) + GROUP_GAP);
-  cardH -= GROUP_GAP;
-
-  const cardTop = 50;
-  pdf.setFillColor(CARD); pdf.setDrawColor(BORDER);
-  pdf.roundedRect(margin, cardTop, contentW, cardH, 14, 14, 'FD');
-
-  let y = cardTop + pad + 20;
-  pdf.setTextColor(DARK); pdf.setFont('helvetica','bold'); pdf.setFontSize(20);
-  pdf.text('Zusammenfassung', margin+pad, y);
-  y += 10;
-
-  rows.forEach(([label, val, note]) => {
-    y += LABEL_SIZE;
-    pdf.setFont('helvetica','bold'); pdf.setFontSize(LABEL_SIZE); pdf.setTextColor(SUB);
-    pdf.text(pdfSafe(label), margin+pad, y);
-    y += LABEL_VALUE_GAP;
-
-    pdf.setFont('helvetica','bold'); pdf.setFontSize(VALUE_SIZE); pdf.setTextColor(DARK);
-    const lines = pdf.splitTextToSize(pdfSafe(val), contentW - 2*pad);
-    lines.forEach(line => {
-      y += VALUE_SIZE;
-      pdf.text(line, margin+pad, y);
-      y += VALUE_SIZE*0.12;
-    });
-
-    if(note){
-      y += NOTE_GAP;
-      pdf.setFont('helvetica','normal'); pdf.setFontSize(NOTE_SIZE); pdf.setTextColor(SUB);
-      const nl = pdf.splitTextToSize(pdfSafe(note), contentW - 2*pad);
-      nl.forEach(line => { y += NOTE_SIZE; pdf.text(line, margin+pad, y); y += NOTE_SIZE*0.25; });
-    }
-    y += GROUP_GAP;
-  });
-
-  let hy = cardTop + cardH + 22;
-  if(hintLines && hintLines.length){
-    pdf.setFont('helvetica','normal'); pdf.setFontSize(8.5); pdf.setTextColor(SUB);
-    hintLines.forEach(txt=>{
-      const wl = pdf.splitTextToSize(pdfSafe(txt), contentW);
-      wl.forEach(line=>{ pdf.text(line, margin, hy); hy += 11.5; });
-      hy += 2;
-    });
+  function wrap(s,w,size=10,bold=false){
+    pdf.setFont('helvetica',bold?'bold':'normal');pdf.setFontSize(size);
+    return pdf.splitTextToSize(dateText(s),w);
   }
-
+  let y;
+  function header(continued=false){
+    text('HeTec',m,43,16,true);text('PERSONAL | '+(correction?'ZEITERFASSUNG':'KRANKMELDUNG'),m+width-200,42,8,true,muted);
+    pdf.setDrawColor(ink);pdf.setLineWidth(1.2);pdf.line(m,54,W-m,54);
+    text(title+(continued?' - Fortsetzung':''),m,82,20,true);
+    text(continued?person:'Angaben des Mitarbeiters zur internen Bearbeitung',m,100,9,false,muted);
+    y=117;
+  }
+  function ensure(h){if(y+h>bottom){pdf.addPage();header(true);}}
+  function section(label){ensure(46);pdf.setFillColor(pale);pdf.rect(m,y,width,24,'F');text(label,m+10,y+16,10,true);y+=24;}
+  function field(label,value,note){
+    const labelW=169, valueW=width-labelW-20;
+    const labels=wrap(label,labelW-20,8.5,true);
+    const vals=wrap(value,valueW,10.5,true);
+    const notes=note?wrap(note,valueW,8):[];
+    // Split arbitrarily long text without dropping content or crossing the footer.
+    let vi=0,ni=0,first=true;
+    do{
+      ensure(52);
+      const capacity=Math.max(1,Math.floor((bottom-y-22)/13));
+      const part=vals.slice(vi,vi+capacity);vi+=part.length;
+      const left=Math.max(0,capacity-part.length);
+      const np=notes.slice(ni,ni+left);ni+=np.length;
+      const ls=first?labels:wrap(label+' (Fortsetzung)',labelW-20,8.5,true);
+      const h=Math.max(41,22+Math.max(ls.length*11,part.length*13+np.length*11));
+      pdf.setDrawColor(border);pdf.setLineWidth(.5);pdf.rect(m,y,width,h);pdf.line(m+labelW,y,m+labelW,y+h);
+      ls.forEach((s,i)=>text(s,m+10,y+17+i*11,8.5,true,muted));
+      part.forEach((s,i)=>text(s,m+labelW+10,y+17+i*13,10.5,true));
+      np.forEach((s,i)=>text(s,m+labelW+10,y+17+part.length*13+i*11,8,false,muted));
+      y+=h;first=false;
+      if(vi<vals.length||ni<notes.length){pdf.addPage();header(true);}
+    }while(vi<vals.length||ni<notes.length);
+  }
+  header();
+  if(correction){
+    const used=new Set();
+    for(const [heading,keys] of [
+      ['01  Mitarbeiter und Datum',['MITARBEITER','KORREKTUR FÜR DATUM','AUSGEFÜLLT AM']],
+      ['02  Arbeitszeiten und Abweichung',['NORMALE ARBEITSZEIT (SOLL)','KORREKTE ARBEITSZEIT (IST)','MITTAGSPAUSE','ZEITVERZUG']],
+      ['03  Begründung',['GRUND','BEMERKUNG']]
+    ]){
+      section(heading);
+      for(const key of keys){const row=rows.find(r=>r[0]===key);if(row){field(...row);used.add(key);}}
+      y+=12;
+    }
+    for(const row of rows)if(!used.has(row[0]))field(...row);
+  }else{
+    section('01  Angaben zur Krankmeldung');rows.forEach(r=>field(...r));y+=12;
+  }
   if(signatureCanvas){
-    const sigBoxH = 110;
-    let sigLabelY = hy + 10;
-    let sigBoxY = sigLabelY + 14;
-    // Passt die Unterschrift nicht mehr auf die Seite -> neue Seite dafür (wichtigstes Element, darf nie abgeschnitten werden)
-    if(sigBoxY + sigBoxH > H - margin){
-      pdf.addPage();
-      sigLabelY = margin + 10;
-      sigBoxY = sigLabelY + 14;
-    }
-    pdf.setFont('helvetica','normal'); pdf.setFontSize(10); pdf.setTextColor(SUB);
-    pdf.text(pdfSafe(signatureLabel || 'Digitale Unterschrift'), margin, sigLabelY);
-
-    pdf.setDrawColor(BORDER);
-    pdf.setLineDashPattern([3,3], 0);
-    pdf.roundedRect(margin, sigBoxY, contentW, sigBoxH, 10, 10, 'S');
-    pdf.setLineDashPattern([], 0);
-
-    // Unterschrift direkt aus der Zeichenfläche (volle Auflösung, kein Umweg über html2canvas)
-    const sigDataUrl = signatureCanvas.toDataURL('image/png');
-    const sigRatio = signatureCanvas.width / signatureCanvas.height;
-    const innerPad = 12;
-    let dw = contentW - 2*innerPad, dh = dw/sigRatio;
-    if(dh > sigBoxH - 2*innerPad){ dh = sigBoxH - 2*innerPad; dw = dh*sigRatio; }
-    const dx = margin + (contentW-dw)/2, dy = sigBoxY + (sigBoxH-dh)/2;
-    pdf.addImage(sigDataUrl, 'PNG', dx, dy, dw, dh);
+    ensure(115);section('04  Unterschrift des Mitarbeiters');
+    pdf.setDrawColor(border);pdf.rect(m,y,width,78);
+    const ratio=signatureCanvas.width/signatureCanvas.height;
+    let dw=Math.min(width-24,270),dh=dw/ratio;if(dh>49){dh=49;dw=dh*ratio;}
+    pdf.addImage(signatureCanvas.toDataURL('image/png'),'PNG',m+12,y+4,dw,dh);
+    pdf.line(m+12,y+56,W-m-12,y+56);
+    text(signatureLabel||'Digitale Unterschrift',m+12,y+69,8,false,muted);y+=90;
   }
-
+  if(hintLines.length){
+    ensure(35);text('Hinweise zur Bearbeitung',m,y+9,8,true,muted);y+=21;
+    for(const hint of hintLines){
+      for(const line of wrap(hint,width,7.5)){ensure(10);text(line,m,y,7.5,false,muted);y+=10;}
+      y+=3;
+    }
+  }
+  const pages=pdf.internal.getNumberOfPages();
+  for(let p=1;p<=pages;p++){
+    pdf.setPage(p);pdf.setDrawColor(border);pdf.line(m,H-35,W-m,H-35);
+    text('HeTec | '+title,m,H-22,7.5,false,muted);
+    text('Seite '+p+' von '+pages,W-m-62,H-22,7.5,false,muted);
+  }
+  pdf.setProperties({title,subject:'Mitarbeiterformular',creator:'HeTec Zeiterfassung'});
   return pdf.output('blob');
 }
 
