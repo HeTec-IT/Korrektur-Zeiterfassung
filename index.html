@@ -494,7 +494,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 </head>
 <body>
   <div style="max-width:900px;margin:12px auto;padding:0 16px;font:13px system-ui;color:#475569">
-    <span>Version 2026.09.28-4 · Online-Betrieb</span>
+    <span>Version 2026.09.28-5 · Online-Betrieb</span>
     <button id="refreshApp" type="button" style="margin-left:12px;padding:7px 12px">Aktualisieren</button>
     <p id="updateNotice" hidden style="padding:12px;background:#fef3c7;color:#713f12">Eine Aktualisierung ist bereit. Bitte Eingaben zuerst abschließen und danach auf „Aktualisieren“ klicken.</p>
   </div>
@@ -1067,7 +1067,7 @@ document.getElementById('mailtoBtn').addEventListener('click', async ()=>{
   if(!requireSignature()) return;
   updateAll();
   const data = computeZeitFields();
-  const subject = `Korrektur Zeiterfassung – ${data.vorname} ${data.nachname}`;
+  const subject = `Zeitkorrektur ${data.nachname}, ${data.vorname}`;
   const body = document.getElementById('summaryBox').innerText.replace(/\u00A0/g,' ');
   const filename = `${data.datum} - ${data.vorname} ${data.nachname} Zeitkorrektur.pdf`;
   const btn = document.getElementById('mailtoBtn');
