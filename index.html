@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Korrektur Zeiterfassung</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#16a34a">
+<link rel="icon" href="./favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Zeitkorrektur">
+<meta name="mobile-web-app-capable" content="yes">
+<style>
+  :root{
+    --bg:#f7f9fb;
+    --card:#ffffff;
+    --text:#0f172a;
+    --sub:#475569;
+    --error:#ef4444;
+    --ok:#16a34a;
+    --border:#e2e8f0;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    line-height:1.4;
+  }
+  .container{max-width:900px;margin:32px auto;padding:0 16px}
+  .topbar{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin:0 0 16px}
+  h1{font-size:24px;margin:0}
+  .brand{font-size:13px;color:var(--sub);white-space:nowrap;font-weight:600}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:0 6px 20px rgba(2,8,23,.06);overflow:hidden}
+  .hints{padding:14px 20px;background:#ecfeff;color:#0b3b3b;font-size:14px}
+  .hints ol{margin:6px 0 0 18px;padding:0}
+  .section{padding:18px 20px;border-top:1px dashed var(--border)}
+  .section:first-of-type{border-top:none}
+  .fields{display:flex;flex-direction:column;gap:18px}
+  label{font-size:13px;color:var(--sub);display:block;margin-bottom:4px}
+  input,select,textarea{width:100%;padding:13px;border:1px solid var(--border);border-radius:10px;font-size:16px;font-family:inherit}
+  textarea{min-height:70px;resize:vertical}
+  .hint{font-size:12px;color:var(--sub);margin-top:4px}
+  .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px}
+  button{border:0;border-radius:10px;padding:11px 16px;font-weight:600;cursor:pointer;font-size:14px;font-family:inherit}
+  .ghost{background:#f1f5f9;color:var(--text)}
+  .danger{background:var(--error);color:#fff}
+  .success{background:var(--ok);color:#fff}
+  canvas.signature{width:100%;height:160px;border:1px dashed var(--border);border-radius:10px;background:#fff;touch-action:none}
+  .summary{background:#f8fafc;border:1px dashed var(--border);padding:12px;border-radius:10px;font-size:14px}
+  .summary b{color:var(--text)}
+
+  .muted{color:var(--sub);font-size:13px}
+  .errorText{color:var(--error);font-size:13px;display:none;margin-top:6px}
+
+  .backBtn{background:none;border:0;color:var(--sub);font-size:13px;padding:6px 0;margin-bottom:6px;cursor:pointer;font-weight:600;font-family:inherit}
+  .backBtn:hover{color:var(--text)}
+
+  .startSub{color:var(--sub);font-size:14px;margin:-10px 0 18px}
+
+  .choices{display:flex;flex-direction:column;gap:14px;margin-top:8px}
+  .choiceCard{display:flex;align-items:center;gap:14px;width:100%;text-align:left;background:var(--card);border:1px solid var(--border);border-left:4px solid var(--border);border-radius:14px;box-shadow:0 6px 20px rgba(2,8,23,.06);padding:16px 18px;cursor:pointer;font-family:inherit;min-height:44px;-webkit-tap-highlight-color:transparent}
+  .choiceCard:active{transform:scale(.99)}
+  .choiceCard:hover{border-color:#94a3b8}
+  .choiceCard.zeit{border-left-color:#16a34a}
+  .choiceCard.krank{border-left-color:#2563eb}
+  .choiceIcon{flex-shrink:0;width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center}
+  .choiceIcon svg{width:24px;height:24px}
+  .choiceCard.zeit .choiceIcon{background:#dcfce7;color:#16a34a}
+  .choiceCard.krank .choiceIcon{background:#dbeafe;color:#2563eb}
+  .choiceText{flex:1;min-width:0}
+  .choiceCard .ct{display:block;font-size:17px;font-weight:700;color:var(--text)}
+  .choiceCard .cs{display:block;font-size:13px;color:var(--sub);margin-top:2px;font-weight:400}
+  .choiceCard .arrow{flex-shrink:0;font-size:22px;color:var(--sub)}
+
+  .optRow{display:flex;gap:16px;flex-wrap:wrap;margin-top:4px}
+  .optRow label{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--text);margin:0;font-weight:400}
+  .optRow input{width:auto}
+
+  @media print{
+    @page{size:A4 portrait;margin:16mm}
+    body{background:#fff}
+    .container{max-width:none;margin:0;padding:0}
+    .card{border:none;box-shadow:none;border-radius:0}
+    .hints,.fields,.actions{display:none !important}
+    .section{border-top:none;padding:6px 0}
+    h1{font-size:18px}
+  }
+</style>
+</head>
+<body>
+  <div style="max-width:900px;margin:12px auto;padding:0 16px;font:13px system-ui;color:#475569">
+    <span>Version 2026.09.28-3 · Online-Betrieb</span>
+    <button id="refreshApp" type="button" style="margin-left:12px;padding:7px 12px">Aktualisieren</button>
+    <p id="updateNotice" hidden style="padding:12px;background:#fef3c7;color:#713f12">Eine Aktualisierung ist bereit. Bitte Eingaben zuerst abschließen und danach auf „Aktualisieren“ klicken.</p>
+  </div>
+  <div class="container" id="screenStart">
+    <div class="topbar">
+      <h1>HeTec Tools</h1>
+      <span class="brand">HeTec GmbH</span>
+    </div>
+    <p class="startSub">Was möchtest du erledigen?</p>
+    <div class="choices">
+      <button type="button" class="choiceCard zeit" id="goZeit">
+        <span class="choiceIcon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15.5 14"></polyline></svg>
+        </span>
+        <span class="choiceText">
+          <span class="ct">Zeit Korrektur</span>
+          <span class="cs">Nachträgliche Korrektur der Arbeitszeit</span>
+        </span>
+        <span class="arrow">›</span>
+      </button>
+      <button type="button" class="choiceCard krank" id="goKrank">
+        <span class="choiceIcon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="3"></rect><path d="M8 2.5v3M16 2.5v3M3 9.5h18"></path><path d="M12 12.5v5M9.5 15h5"></path></svg>
+        </span>
+        <span class="choiceText">
+          <span class="ct">Digitale Krankmeldung</span>
+          <span class="cs">Krankmeldung digital erfassen</span>
+        </span>
+        <span class="arrow">›</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="container" id="screenZeit" style="display:none">
+    <button type="button" class="backBtn" data-back>‹ Zurück</button>
+    <div class="topbar">
+      <h1>Korrektur Zeiterfassung</h1>
+      <span class="brand">HeTec GmbH</span>
+    </div>
+    <div class="card">
+      <div class="hints">
+        <strong>Hinweise</strong>
+        <ol>
+          <li>Mitarbeitende füllen dieses Formular <u>sofort nach Kenntnis</u> der Fehlmeldung aus.</li>
+          <li>Mit der digitalen Unterschrift wird die korrekte Meldung der Arbeitszeit bestätigt. Falschangaben können arbeitsrechtliche Folgen haben.</li>
+          <li>Nach der Unterschrift bitte auf „Per E‑Mail senden" tippen – die PDF senden an: <strong>zeiterfassung@hetec-gmbh.de</strong>.</li>
+        </ol>
+      </div>
+
+      <form id="form">
+        <div class="section fields">
+          <div>
+            <label for="vorname">Vorname</label>
+            <input id="vorname" name="vorname" autocomplete="given-name" required />
+          </div>
+
+          <div>
+            <label for="name">Nachname</label>
+            <input id="name" name="name" autocomplete="family-name" required />
+          </div>
+
+          <div>
+            <label for="vorfallsdatum">Korrektur für Datum</label>
+            <input id="vorfallsdatum" name="vorfallsdatum" type="date" required />
+          </div>
+
+          <div>
+            <label for="sollStart">Soll-Beginn (laut Arbeitsplan)</label>
+            <input id="sollStart" type="time" required />
+          </div>
+
+          <div>
+            <label for="sollEnde">Soll-Ende (laut Arbeitsplan)</label>
+            <input id="sollEnde" type="time" required />
+          </div>
+
+          <div>
+            <div class="optRow">
+              <label><input type="checkbox" id="wieSoll"> Gearbeitet wie Soll (Ist-Zeiten übernehmen)</label>
+            </div>
+          </div>
+
+          <div>
+            <label for="istStart">Ist-Beginn (tatsächlich gearbeitet)</label>
+            <input id="istStart" type="time" required />
+          </div>
+
+          <div>
+            <label for="istEnde">Ist-Ende (tatsächlich gearbeitet)</label>
+            <input id="istEnde" type="time" required />
+          </div>
+
+          <div>
+            <div class="optRow">
+              <label><input type="checkbox" id="pausenabzug"> Pausenabzug (60 Min. pauschal)</label>
+            </div>
+          </div>
+
+          <div>
+            <label for="pauseStart">Mittagspause-Beginn</label>
+            <input id="pauseStart" type="time" />
+          </div>
+
+          <div>
+            <label for="pauseEnde">Mittagspause-Ende</label>
+            <input id="pauseEnde" type="time" />
+          </div>
+
+          <div>
+            <label for="fehlstunden">Zeitverzug</label>
+            <input id="fehlstunden" name="fehlstunden" readonly />
+          </div>
+
+          <div>
+            <label for="grund">Grund</label>
+            <select id="grund" name="grund" required>
+              <option value="" selected disabled>Bitte auswählen …</option>
+              <option>Vergessen einzustempeln (Tag)</option>
+              <option>Vergessen nach der Pause einzustempeln</option>
+              <option>Mittagspause falsch gestempelt</option>
+              <option>Systeme gingen nicht</option>
+              <option>Verkaufsoffener Sonntag</option>
+              <option>Externe Schulung</option>
+              <option>Lange Verkaufsnacht</option>
+              <option>Sonstiges (siehe Freitext)</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="datumHeute">Ausgefüllt am</label>
+            <input id="datumHeute" name="datumHeute" type="date" required />
+          </div>
+
+          <div>
+            <label for="freitext">Bemerkung (optional)</label>
+            <textarea id="freitext" name="freitext" maxlength="400" placeholder="weitere Details …"></textarea>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="summary" id="summaryBox"></div>
+          <div class="hint" style="margin-top:10px">+ = Mehrarbeit, − = Fehlzeit. Bei ausgefüllter Mittagspause wird die Abweichung von der Standard-Pause (60 Min.) automatisch mit eingerechnet.<br>Hinweis: Basiert auf Angaben des Mitarbeiters – wird erst nach Prüfung der Zeiterfassung korrekt im System hinterlegt.<br>Bei „Vergessen einzustempeln (Tag)“: zeigt die volle Ist-Zeit (kein Soll-Abgleich, da im System noch nichts erfasst ist).</div>
+        </div>
+
+        <div class="section">
+          <label>Digitale Unterschrift <span id="sigOf" class="muted"></span></label>
+          <canvas id="sig" class="signature"></canvas>
+          <div class="actions">
+            <button type="button" class="ghost" id="clearSig">Unterschrift löschen</button>
+          </div>
+          <div id="sigError" class="errorText">Bitte unterschreiben.</div>
+        </div>
+
+        <div class="section">
+          <div class="actions">
+            <button type="button" class="success" id="mailtoBtn">Per E‑Mail senden (PDF)</button>
+            <button type="reset" class="danger">Formular zurücksetzen</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="container" id="screenKrank" style="display:none">
+    <button type="button" class="backBtn" data-back>‹ Zurück</button>
+    <div class="topbar">
+      <h1>Digitale Krankmeldung</h1>
+      <span class="brand">HeTec GmbH</span>
+    </div>
+    <div class="card">
+
+      <form id="formKrank">
+        <div class="section fields">
+          <div>
+            <label for="kVorname">Vorname</label>
+            <input id="kVorname" autocomplete="given-name" required />
+          </div>
+          <div>
+            <label for="kName">Name</label>
+            <input id="kName" autocomplete="family-name" required />
+          </div>
+          <div>
+            <label for="kKasse">Krankenkasse</label>
+            <select id="kKasse" required>
+              <option value="" selected disabled>Bitte auswählen …</option>
+              <optgroup label="Baden-Württemberg / Bayern">
+                <option>AOK Baden-Württemberg</option>
+                <option>AOK Bayern</option>
+              </optgroup>
+              <optgroup label="Bundesweit (Ersatzkassen)">
+                <option>Techniker Krankenkasse (TK)</option>
+                <option>BARMER</option>
+                <option>DAK-Gesundheit</option>
+                <option>hkk Krankenkasse</option>
+                <option>KKH Kaufmännische Krankenkasse</option>
+                <option>HEK – Hanseatische Krankenkasse</option>
+              </optgroup>
+              <optgroup label="Weitere Betriebs- & Innungskrankenkassen">
+                <option>IKK classic</option>
+                <option>IKK gesund plus</option>
+                <option>BIG direkt gesund</option>
+                <option>BKK firmus</option>
+                <option>Mobil Krankenkasse</option>
+                <option>SBK – Siemens-Betriebskrankenkasse</option>
+                <option>Audi BKK</option>
+                <option>Bosch BKK</option>
+                <option>Mercedes-Benz BKK</option>
+                <option>BAHN-BKK</option>
+                <option>mkk – meine krankenkasse</option>
+                <option>pronova BKK</option>
+                <option>VIACTIV Krankenkasse</option>
+                <option>vivida bkk</option>
+                <option>mhplus Krankenkasse</option>
+                <option>KNAPPSCHAFT</option>
+                <option>Novitas BKK</option>
+              </optgroup>
+              <option value="Sonstige">Sonstige</option>
+            </select>
+            <input id="kKasseSonstige" placeholder="Name der Krankenkasse" style="display:none;margin-top:8px" />
+          </div>
+          <div>
+            <label for="kBeginn">Beginn (Datum) <span class="muted">– der Arbeitsunfähigkeit</span></label>
+            <input id="kBeginn" type="date" required />
+          </div>
+          <div>
+            <label for="kEnde">Ende (Datum)</label>
+            <input id="kEnde" type="date" required />
+          </div>
+          <div>
+            <label for="kFeststellung">Tag der Feststellung</label>
+            <input id="kFeststellung" type="date" required />
+          </div>
+          <div>
+            <label>Typ</label>
+            <div class="optRow">
+              <label><input type="radio" name="kTyp" value="Erstmeldung" checked> Erstmeldung</label>
+              <label><input type="radio" name="kTyp" value="Folgemeldung"> Folgemeldung</label>
+            </div>
+          </div>
+          <div>
+            <label>Zusatzinfo</label>
+            <div class="optRow">
+              <label><input type="checkbox" name="kZusatz" value="Krankheit"> Krankheit</label>
+              <label><input type="checkbox" name="kZusatz" value="Arbeitsunfall"> Arbeitsunfall</label>
+              <label><input type="checkbox" name="kZusatz" value="Krankenhausaufenthalt"> Krankenhausaufenthalt</label>
+            </div>
+            <div id="kZusatzError" class="errorText">Bitte mindestens eine Zusatzinfo auswählen.</div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="summary" id="krankSummaryBox"></div>
+        </div>
+
+        <div class="section actions">
+          <button type="button" class="success" id="saveKrankBtn">Speichern (PDF)</button>
+          <button type="reset" class="danger">Formular zurücksetzen</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+<script>
+document.getElementById('form').addEventListener('submit', e => e.preventDefault());
+
+// Datum US-Format YYYY.MM.DD (natives <input type=date> liefert intern YYYY-MM-DD)
+function fmtDateUS(iso){ return iso ? iso.replaceAll('-', '.') : ''; }
+
+// Zeitverzug berechnen
+function toMinutes(t){ if(!t) return null; const [h,m]=t.split(':').map(Number); return h*60+m; }
+function minutesToHhmm(mins){
+  const sign = mins < 0 ? '-' : (mins > 0 ? '+' : '');
+  mins = Math.abs(mins);
+  const h = Math.floor(mins/60), m = Math.round(mins%60);
+  return sign + String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+}
+function minutesToDecimalHours(mins){ return (mins/60).toFixed(2).replace('.', ','); }
+const sollStart=document.getElementById('sollStart'), sollEnde=document.getElementById('sollEnde');
+const istStart=document.getElementById('istStart'), istEnde=document.getElementById('istEnde');
+const pauseStart=document.getElementById('pauseStart'), pauseEnde=document.getElementById('pauseEnde');
+const wieSoll=document.getElementById('wieSoll');
+function syncIstFromSoll(){
+  if(!wieSoll.checked) return;
+  istStart.value = sollStart.value;
+  istEnde.value = sollEnde.value;
+}
+wieSoll.addEventListener('change', syncIstFromSoll);
+sollStart.addEventListener('change', syncIstFromSoll);
+sollEnde.addEventListener('change', syncIstFromSoll);
+
+const pausenabzug=document.getElementById('pausenabzug');
+function togglePausenabzug(){
+  const on = pausenabzug.checked;
+  pauseStart.disabled = on;
+  pauseEnde.disabled = on;
+  if(on){ pauseStart.value=''; pauseEnde.value=''; }
+}
+pausenabzug.addEventListener('change', togglePausenabzug);
+const fehl=document.getElementById('fehlstunden');
+const STANDARD_PAUSE_MIN = 60; // angenommene Standard-Mittagspause laut Arbeitsplan, in Minuten
+function calcDelay(){
+  const sS=toMinutes(sollStart.value), sE=toMinutes(sollEnde.value);
+  const iS=toMinutes(istStart.value), iE=toMinutes(istEnde.value);
+  if([sS,sE,iS,iE].some(v=>v===null)){ fehl.value=''; return; }
+  let soll=sE-sS, ist=iE-iS;
+  if(soll<0) soll+=1440;
+  if(ist<0) ist+=1440;
+  const ganzerTagVergessen = document.getElementById('grund').value === 'Vergessen einzustempeln (Tag)';
+  if(ganzerTagVergessen){ fehl.value = minutesToHhmm(ist); return; }
+
+  let delay = ist - soll;
+  const pS=toMinutes(pauseStart.value), pE=toMinutes(pauseEnde.value);
+  if(pS!==null && pE!==null){
+    let pauseIst = pE - pS;
+    if(pauseIst<0) pauseIst+=1440;
+    // Abweichung von der Standard-Pause: kürzere Pause als üblich -> mehr netto gearbeitet (+), längere Pause -> weniger (-)
+    delay += (STANDARD_PAUSE_MIN - pauseIst);
+  }
+  fehl.value = minutesToHhmm(delay);
+}
+
+// Signatur
+const canvas=document.getElementById('sig'), ctx=canvas.getContext('2d');
+let drawing=false, last=null;
+function resizeCanvas(){
+  const ratio=Math.max(window.devicePixelRatio||1,1);
+  const newW=Math.round(canvas.clientWidth*ratio), newH=Math.round(canvas.clientHeight*ratio);
+  if(newW===0 || newH===0) return; // Screen gerade nicht sichtbar -> nichts tun (kein Datenverlust)
+  if(newW===canvas.width && newH===canvas.height) return; // KEINE echte Größenänderung -> NICHT löschen (z.B. Adressleiste am Handy triggert sonst grundlos ein Resize-Event und wischt die Unterschrift weg)
+  // Bei echter Größenänderung (z.B. Drehung des Geräts) vorhandene Zeichnung retten und danach wiederherstellen
+  let saved=null;
+  if(canvas.width>0 && canvas.height>0 && hasSignatureRaw()){
+    saved=document.createElement('canvas');
+    saved.width=canvas.width; saved.height=canvas.height;
+    saved.getContext('2d').drawImage(canvas,0,0);
+  }
+  canvas.width=newW; canvas.height=newH;
+  ctx.scale(ratio,ratio);
+  ctx.lineWidth=2; ctx.lineCap='round'; ctx.strokeStyle='#111827';
+  if(saved) ctx.drawImage(saved, 0, 0, saved.width/ratio, saved.height/ratio);
+}
+function hasSignatureRaw(){
+  try{
+    const px=ctx.getImageData(0,0,canvas.width,canvas.height).data;
+    for(let i=3;i<px.length;i+=4) if(px[i]!==0) return true;
+  }catch(e){}
+  return false;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+function startDraw(x,y){ drawing=true; last={x,y}; }
+function moveDraw(x,y){ if(!drawing) return; ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(x,y); ctx.stroke(); last={x,y}; }
+function endDraw(){ drawing=false; }
+canvas.addEventListener('mousedown', e=>startDraw(e.offsetX,e.offsetY));
+canvas.addEventListener('mousemove', e=>moveDraw(e.offsetX,e.offsetY));
+canvas.addEventListener('mouseup', endDraw);
+canvas.addEventListener('mouseleave', endDraw);
+canvas.addEventListener('touchstart', e=>{ e.preventDefault(); const r=canvas.getBoundingClientRect(); const t=e.touches[0]; startDraw(t.clientX-r.left,t.clientY-r.top); },{passive:false});
+canvas.addEventListener('touchmove', e=>{ e.preventDefault(); const r=canvas.getBoundingClientRect(); const t=e.touches[0]; moveDraw(t.clientX-r.left,t.clientY-r.top); },{passive:false});
+canvas.addEventListener('touchend', endDraw);
+document.getElementById('clearSig').addEventListener('click', ()=> ctx.clearRect(0,0,canvas.width,canvas.height));
+function hasSignature(){
+  return hasSignatureRaw();
+}
+function requireSignature(){
+  if(!hasSignature()){
+    const err=document.getElementById('sigError');
+    err.style.display='block';
+    setTimeout(()=> err.style.display='none', 3000);
+    return false;
+  }
+  return true;
+}
+
+// Zusammenfassung: live bei jeder Eingabe aktualisiert
+function computeZeitFields(){
+  const v=document.getElementById('vorname').value.trim();
+  const n=document.getElementById('name').value.trim();
+  const d=fmtDateUS(document.getElementById('vorfallsdatum').value);
+  const an=fmtDateUS(document.getElementById('datumHeute').value);
+  const g=document.getElementById('grund').value;
+  const ft=document.getElementById('freitext').value.trim();
+  const ss=sollStart.value, se=sollEnde.value, is=istStart.value, ie=istEnde.value;
+  const ps=pauseStart.value, pe=pauseEnde.value;
+  const mittagspauseText = pausenabzug.checked ? `${STANDARD_PAUSE_MIN} Min. (pauschal)` : `${ps||'-'} – ${pe||'-'}`;
+  let istBrutto = '';
+  const iS=toMinutes(is), iE=toMinutes(ie);
+  if(iS!==null && iE!==null){
+    let m = iE - iS;
+    if(m<0) m += 1440;
+    istBrutto = ` – ${minutesToDecimalHours(m)} Std. brutto`;
+  }
+  return {
+    vorname:v, nachname:n, datum:d, ausgefuellt:an,
+    rows: [
+      ['MITARBEITER', `${v} ${n}`, null],
+      ['KORREKTUR FÜR DATUM', d || '-', null],
+      ['NORMALE ARBEITSZEIT (SOLL)', `${ss||'-'} – ${se||'-'}`, null],
+      ['KORREKTE ARBEITSZEIT (IST)', `${is||'-'} – ${ie||'-'}${istBrutto}`, null],
+      ['MITTAGSPAUSE', mittagspauseText, null],
+      ['ZEITVERZUG', fehl.value || '-', 'Angabe Mitarbeiter – wird nach Prüfung final im System hinterlegt'],
+      ['GRUND', g || '-', null],
+      ['AUSGEFÜLLT AM', an || '-', null],
+      ['BEMERKUNG', ft || '—', null],
+    ]
+  };
+}
+
+function updateAll(){
+  calcDelay();
+  const v=document.getElementById('vorname').value.trim();
+  const n=document.getElementById('name').value.trim();
+  document.getElementById('sigOf').textContent = (v||n) ? `— ${v} ${n}` : '';
+
+  const d=fmtDateUS(document.getElementById('vorfallsdatum').value);
+  const an=fmtDateUS(document.getElementById('datumHeute').value);
+  const g=document.getElementById('grund').value;
+  const ft=document.getElementById('freitext').value.trim();
+  const ss=sollStart.value, se=sollEnde.value, is=istStart.value, ie=istEnde.value;
+  const ps=pauseStart.value, pe=pauseEnde.value;
+  const mittagspauseText = pausenabzug.checked ? `${STANDARD_PAUSE_MIN} Min. (pauschal)` : `${ps||'-'} – ${pe||'-'}`;
+  let istBrutto = '';
+  const iS=toMinutes(is), iE=toMinutes(ie);
+  if(iS!==null && iE!==null){
+    let m = iE - iS;
+    if(m<0) m += 1440;
+    istBrutto = ` – ${minutesToDecimalHours(m)} Std. brutto`;
+  }
+
+  document.getElementById('summaryBox').innerHTML = `<strong>Zusammenfassung</strong><br>
+  Mitarbeiter: <b>${v} ${n}</b><br>
+  Korrektur für Datum: <b>${d || '-'}</b><br>
+  Normale Arbeitszeit (Soll): <b>${ss||'-'} – ${se||'-'}</b><br>
+  Korrekte Arbeitszeit (Ist): <b>${is||'-'} – ${ie||'-'}${istBrutto}</b><br>
+  Mittagspause: <b>${mittagspauseText}</b><br>
+  Zeitverzug: <b>${fehl.value || '-'}</b> <span class="muted">(Angabe Mitarbeiter – wird nach Prüfung final im System hinterlegt)</span><br>
+  Grund: <b>${g||'-'}</b><br>
+  Ausgefüllt am: <b>${an||'-'}</b><br>
+  Bemerkung: ${ft || '—'}`;
+}
+document.getElementById('form').addEventListener('input', updateAll);
+document.getElementById('form').addEventListener('change', updateAll);
+document.getElementById('form').addEventListener('reset', ()=>{
+  setTimeout(()=>{
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    document.getElementById('datumHeute').valueAsDate = new Date();
+    togglePausenabzug();
+    updateAll();
+  }, 0);
+});
+
+// Start: heutiges Datum vorbelegen
+document.getElementById('datumHeute').valueAsDate = new Date();
+updateAll();
+
+// Druckfertiges A4-Formular mit Vektortext und digitaler Unterschrift (jsPDF)
+function loadScript(src){
+  return new Promise((resolve,reject)=>{
+    const s=document.createElement('script');
+    s.src=src; s.onload=resolve; s.onerror=()=>reject(new Error('Laden fehlgeschlagen: '+src));
+    document.head.appendChild(s);
+  });
+}
+async function ensurePdfLibs(){
+  if(!window.jspdf) await loadScript('./vendor/jspdf.umd.min.js?v=2.5.1');
+}
+
+// jsPDFs Standardschrift (Helvetica/WinAnsi) kennt kein echtes Minuszeichen U+2212 -
+// wird sonst falsch dargestellt. Normaler Bindestrich ist visuell praktisch identisch.
+function pdfSafe(str){
+  return String(str).replace(/\u2212/g, '-');
+}
+
+async function buildNativeSummaryPdf({rows, hintLines=[], signatureCanvas, signatureLabel}){
+  await ensurePdfLibs();
+  const {jsPDF}=window.jspdf;
+  const pdf=new jsPDF({orientation:'portrait',unit:'pt',format:'a4'});
+  const W=pdf.internal.pageSize.getWidth(), H=pdf.internal.pageSize.getHeight();
+  const m=42, width=W-2*m, bottom=H-48;
+  const ink='#172b40', muted='#526171', border='#aab5bf', pale='#edf2f6';
+  const correction=rows.some(r=>r[0]==='ZEITVERZUG');
+  const title=correction?'Korrektur der Zeiterfassung':'Krankmeldung';
+  const person=rows.find(r=>r[0]==='MITARBEITER')?.[1] || '';
+  const dateText=v=>pdfSafe(v).replace(/\b(\d{4})[.-](\d{2})[.-](\d{2})\b/g,'$3.$2.$1');
+  function text(s,x,y,size=10,bold=false,color=ink){
+    pdf.setFont('helvetica',bold?'bold':'normal');pdf.setFontSize(size);pdf.setTextColor(color);
+    pdf.text(dateText(s),x,y);
+  }
+  function wrap(s,w,size=10,bold=false){
+    pdf.setFont('helvetica',bold?'bold':'normal');pdf.setFontSize(size);
+    return pdf.splitTextToSize(dateText(s),w);
+  }
+  let y;
+  function header(continued=false){
+    text('HeTec',m,43,16,true);text('PERSONAL | '+(correction?'ZEITERFASSUNG':'KRANKMELDUNG'),m+width-200,42,8,true,muted);
+    pdf.setDrawColor(ink);pdf.setLineWidth(1.2);pdf.line(m,54,W-m,54);
+    text(title+(continued?' - Fortsetzung':''),m,82,20,true);
+    text(continued?person:'Angaben des Mitarbeiters zur internen Bearbeitung',m,100,9,false,muted);
+    y=117;
+  }
+  function ensure(h){if(y+h>bottom){pdf.addPage();header(true);}}
+  function section(label){ensure(46);pdf.setFillColor(pale);pdf.rect(m,y,width,24,'F');text(label,m+10,y+16,10,true);y+=24;}
+  function field(label,value,note){
+    const labelW=169, valueW=width-labelW-20;
+    const labels=wrap(label,labelW-20,8.5,true);
+    const vals=wrap(value,valueW,10.5,true);
+    const notes=note?wrap(note,valueW,8):[];
+    // Split arbitrarily long text without dropping content or crossing the footer.
+    let vi=0,ni=0,first=true;
+    do{
+      ensure(52);
+      const capacity=Math.max(1,Math.floor((bottom-y-22)/13));
+      const part=vals.slice(vi,vi+capacity);vi+=part.length;
+      const left=Math.max(0,capacity-part.length);
+      const np=notes.slice(ni,ni+left);ni+=np.length;
+      const ls=first?labels:wrap(label+' (Fortsetzung)',labelW-20,8.5,true);
+      const h=Math.max(41,22+Math.max(ls.length*11,part.length*13+np.length*11));
+      pdf.setDrawColor(border);pdf.setLineWidth(.5);pdf.rect(m,y,width,h);pdf.line(m+labelW,y,m+labelW,y+h);
+      ls.forEach((s,i)=>text(s,m+10,y+17+i*11,8.5,true,muted));
+      part.forEach((s,i)=>text(s,m+labelW+10,y+17+i*13,10.5,true));
+      np.forEach((s,i)=>text(s,m+labelW+10,y+17+part.length*13+i*11,8,false,muted));
+      y+=h;first=false;
+      if(vi<vals.length||ni<notes.length){pdf.addPage();header(true);}
+    }while(vi<vals.length||ni<notes.length);
+  }
+  header();
+  if(correction){
+    const used=new Set();
+    for(const [heading,keys] of [
+      ['01  Mitarbeiter und Datum',['MITARBEITER','KORREKTUR FÜR DATUM','AUSGEFÜLLT AM']],
+      ['02  Arbeitszeiten und Abweichung',['NORMALE ARBEITSZEIT (SOLL)','KORREKTE ARBEITSZEIT (IST)','MITTAGSPAUSE','ZEITVERZUG']],
+      ['03  Begründung',['GRUND','BEMERKUNG']]
+    ]){
+      section(heading);
+      for(const key of keys){const row=rows.find(r=>r[0]===key);if(row){field(...row);used.add(key);}}
+      y+=12;
+    }
+    for(const row of rows)if(!used.has(row[0]))field(...row);
+  }else{
+    section('01  Angaben zur Krankmeldung');rows.forEach(r=>field(...r));y+=12;
+  }
+  if(signatureCanvas){
+    ensure(115);section('04  Unterschrift des Mitarbeiters');
+    pdf.setDrawColor(border);pdf.rect(m,y,width,78);
+    const ratio=signatureCanvas.width/signatureCanvas.height;
+    let dw=Math.min(width-24,270),dh=dw/ratio;if(dh>49){dh=49;dw=dh*ratio;}
+    pdf.addImage(signatureCanvas.toDataURL('image/png'),'PNG',m+12,y+4,dw,dh);
+    pdf.line(m+12,y+56,W-m-12,y+56);
+    text(signatureLabel||'Digitale Unterschrift',m+12,y+69,8,false,muted);y+=90;
+  }
+  if(hintLines.length){
+    ensure(35);text('Hinweise zur Bearbeitung',m,y+9,8,true,muted);y+=21;
+    for(const hint of hintLines){
+      for(const line of wrap(hint,width,7.5)){ensure(10);text(line,m,y,7.5,false,muted);y+=10;}
+      y+=3;
+    }
+  }
+  const pages=pdf.internal.getNumberOfPages();
+  for(let p=1;p<=pages;p++){
+    pdf.setPage(p);pdf.setDrawColor(border);pdf.line(m,H-35,W-m,H-35);
+    text('HeTec | '+title,m,H-22,7.5,false,muted);
+    text('Seite '+p+' von '+pages,W-m-62,H-22,7.5,false,muted);
+  }
+  pdf.setProperties({title,subject:'Mitarbeiterformular',creator:'HeTec Zeiterfassung'});
+  return pdf.output('blob');
+}
+
+// E-Mail vorbereiten — PDF automatisch anhängen (z.B. Outlook), sonst Fallback
+document.getElementById('mailtoBtn').addEventListener('click', async ()=>{
+  if(!requireSignature()) return;
+  updateAll();
+  const data = computeZeitFields();
+  const subject = `Korrektur Zeiterfassung – ${data.vorname} ${data.nachname}`;
+  const body = document.getElementById('summaryBox').innerText.replace(/\u00A0/g,' ');
+  const filename = `${data.datum} - ${data.vorname} ${data.nachname} Zeitkorrektur.pdf`;
+  const btn = document.getElementById('mailtoBtn');
+  const oldLabel = btn.textContent;
+  btn.textContent = 'PDF wird erstellt …'; btn.disabled = true;
+
+  try{
+    // jsPDF laden dauert (CDN) - in dieser Zeit könnte ein Resize-Event o.ä.
+    // dazwischenfunken. Deshalb JETZT, unmittelbar vor der eigentlichen
+    // PDF-Erstellung, nochmal zwingend prüfen. Ohne Unterschrift: kein PDF.
+    await ensurePdfLibs();
+    if(!requireSignature()){
+      btn.textContent = oldLabel; btn.disabled = false;
+      return;
+    }
+    const hintLines = [
+      '+ = Mehrarbeit, − = Fehlzeit. Bei ausgefüllter Mittagspause wird die Abweichung von der Standard-Pause (60 Min.) automatisch mit eingerechnet.',
+      'Hinweis: Basiert auf Angaben des Mitarbeiters – wird erst nach Prüfung der Zeiterfassung korrekt im System hinterlegt.',
+      'Bei „Vergessen einzustempeln (Tag)“: zeigt die volle Ist-Zeit (kein Soll-Abgleich, da im System noch nichts erfasst ist).'
+    ];
+    const blob = await buildNativeSummaryPdf({
+      rows: data.rows,
+      hintLines,
+      signatureCanvas: canvas,
+      signatureLabel: `Digitale Unterschrift — ${data.vorname} ${data.nachname}`
+    });
+    const file = new File([blob], filename, {type:'application/pdf'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title: subject, text: body});
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href=url; a.download=filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 800);
+  }catch(err){
+    console.warn('PDF/Share nicht möglich, nutze mailto-Fallback:', err);
+    window.location.href = `mailto:zeiterfassung@hetec-gmbh.de?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  }finally{
+    btn.textContent = oldLabel; btn.disabled = false;
+  }
+});
+
+// Update-Hinweis statt ungefragtem Neuladen: Eingaben bleiben erhalten.
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+  let initiallyControlled = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if(initiallyControlled) document.getElementById('updateNotice').hidden = false;
+    initiallyControlled = true;
+  });
+  window.addEventListener('load', async () => {
+    try {
+      const registration = await navigator.serviceWorker.register('./sw.js', {updateViaCache:'none'});
+      await registration.update();
+    } catch(error) { console.warn('Update-Prüfung fehlgeschlagen:', error); }
+  });
+}
+document.getElementById('refreshApp').addEventListener('click', () => {
+  if(!confirm('Seite neu laden? Nicht exportierte Eingaben gehen dabei verloren.')) return;
+  const url = new URL(location.href); url.searchParams.set('v', Date.now()); location.replace(url.href);
+});
+
+// ===== Startauswahl: Zeit Korrektur / Digitale Krankmeldung =====
+function showScreen(id){
+  ['screenStart','screenZeit','screenKrank'].forEach(s=>{
+    document.getElementById(s).style.display = (s===id) ? '' : 'none';
+  });
+  // Canvas war beim initialen Laden versteckt (screenZeit display:none) und hatte
+  // dadurch clientWidth/clientHeight = 0 -> Signatur unbenutzbar. Hier korrigieren,
+  // sobald der Screen sichtbar ist (nur falls noch nicht korrekt dimensioniert,
+  // damit eine bereits gezeichnete Unterschrift beim erneuten Öffnen erhalten bleibt).
+  // Canvas war beim initialen Laden versteckt (screenZeit display:none) und hatte dadurch
+  // clientWidth/clientHeight = 0 -> resizeCanvas() ist da ein no-op (siehe dortige Guards).
+  // Hier erneut aufrufen, sobald der Screen sichtbar ist - resizeCanvas() selbst prüft bereits
+  // zuverlässig, ob eine echte Größenanpassung nötig ist (kein unnötiges Löschen einer
+  // vorhandenen Unterschrift, aber auch kein Hängenbleiben bei falscher/veralteter Größe,
+  // was sonst zu einem Versatz zwischen Fingerposition und gezeichneter Linie führt).
+  if(id === 'screenZeit') resizeCanvas();
+  window.scrollTo(0,0);
+}
+document.getElementById('goZeit').addEventListener('click', ()=> showScreen('screenZeit'));
+document.getElementById('goKrank').addEventListener('click', ()=> showScreen('screenKrank'));
+document.querySelectorAll('[data-back]').forEach(b=> b.addEventListener('click', ()=> showScreen('screenStart')));
+showScreen('screenStart');
+
+// ===== Digitale Krankmeldung =====
+const formKrank = document.getElementById('formKrank');
+
+function computeKrankFields(){
+  const kSel = document.getElementById('kKasse');
+  const kOther = document.getElementById('kKasseSonstige');
+  const isOtherKasse = kSel.value === 'Sonstige';
+  const k = isOtherKasse ? kOther.value.trim() : kSel.value;
+  const v = document.getElementById('kVorname').value.trim();
+  const n = document.getElementById('kName').value.trim();
+  const beginn = fmtDateUS(document.getElementById('kBeginn').value);
+  const ende = fmtDateUS(document.getElementById('kEnde').value);
+  const fest = fmtDateUS(document.getElementById('kFeststellung').value);
+  const typ = document.querySelector('input[name="kTyp"]:checked');
+  const zusatz = Array.from(document.querySelectorAll('input[name="kZusatz"]:checked')).map(el => el.value).join(', ');
+  return {
+    vorname:v, nachname:n, beginn, ende,
+    rows: [
+      ['MITARBEITER', `${v} ${n}`, null],
+      ['KRANKENKASSE', k || '-', null],
+      ['BEGINN (DATUM DER ARBEITSUNFÄHIGKEIT)', beginn || '-', null],
+      ['ENDE (DATUM)', ende || '-', null],
+      ['TAG DER FESTSTELLUNG', fest || '-', null],
+      ['TYP', typ ? typ.value : '-', null],
+      ['ZUSATZINFO', zusatz || '-', null],
+    ]
+  };
+}
+
+function updateKrankPreview(){
+  const kSel = document.getElementById('kKasse');
+  const kOther = document.getElementById('kKasseSonstige');
+  const isOtherKasse = kSel.value === 'Sonstige';
+  kOther.style.display = isOtherKasse ? '' : 'none';
+  kOther.required = isOtherKasse;
+  if(!isOtherKasse) kOther.value = '';
+  const k = isOtherKasse ? kOther.value.trim() : kSel.value;
+
+  const v = document.getElementById('kVorname').value.trim();
+  const n = document.getElementById('kName').value.trim();
+  const beginn = fmtDateUS(document.getElementById('kBeginn').value);
+  const ende = fmtDateUS(document.getElementById('kEnde').value);
+  const fest = fmtDateUS(document.getElementById('kFeststellung').value);
+  const typ = document.querySelector('input[name="kTyp"]:checked');
+  const zusatz = Array.from(document.querySelectorAll('input[name="kZusatz"]:checked')).map(el => el.value).join(', ');
+
+  document.getElementById('krankSummaryBox').innerHTML = `<strong>Zusammenfassung</strong><br>
+  Mitarbeiter: <b>${v} ${n}</b><br>
+  Krankenkasse: <b>${k || '-'}</b><br>
+  Beginn (Datum der Arbeitsunfähigkeit): <b>${beginn || '-'}</b><br>
+  Ende (Datum): <b>${ende || '-'}</b><br>
+  Tag der Feststellung: <b>${fest || '-'}</b><br>
+  Typ: <b>${typ ? typ.value : '-'}</b><br>
+  Zusatzinfo: <b>${zusatz || '-'}</b>`;
+}
+formKrank.addEventListener('input', updateKrankPreview);
+formKrank.addEventListener('change', updateKrankPreview);
+formKrank.addEventListener('reset', ()=> setTimeout(updateKrankPreview, 0));
+updateKrankPreview();
+
+function requireZusatzinfo(){
+  const any = document.querySelectorAll('input[name="kZusatz"]:checked').length > 0;
+  if(!any){
+    const err = document.getElementById('kZusatzError');
+    err.style.display = 'block';
+    setTimeout(()=> err.style.display = 'none', 3000);
+  }
+  return any;
+}
+
+document.getElementById('saveKrankBtn').addEventListener('click', async ()=>{
+  if(!formKrank.reportValidity()) return;
+  if(!requireZusatzinfo()) return;
+  updateKrankPreview();
+
+  const data = computeKrankFields();
+  const filename = `${data.beginn} - ${data.ende}, Krankmeldung, ${data.vorname} ${data.nachname}.pdf`;
+
+  const btn = document.getElementById('saveKrankBtn');
+  const oldLabel = btn.textContent;
+  btn.textContent = 'PDF wird erstellt …'; btn.disabled = true;
+  try{
+    const blob = await buildNativeSummaryPdf({ rows: data.rows });
+    const file = new File([blob], filename, {type:'application/pdf'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:'Krankmeldung'});
+    } else {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download=filename;
+      document.body.appendChild(a); a.click();
+      setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 800);
+    }
+  }catch(err){
+    console.warn('PDF/Share nicht möglich:', err);
+  }finally{
+    btn.textContent = oldLabel; btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

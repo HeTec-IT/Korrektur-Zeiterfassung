@@ -1,0 +1,40 @@
+HeTec Zeiterfassung und Krankmeldung – Komplettpaket
+Version 2026.09.28-3
+
+1. ZIP auf dem Computer vollständig entpacken.
+2. Bestehendes GitHub-Repository Korrektur-Zeiterfassung beibehalten.
+   Nicht das Repository löschen: Adresse und Pages-Einstellungen sollen bleiben.
+3. Die Dateien aus diesem Paket direkt in den Veröffentlichungsordner hochladen
+   (normalerweise Stammverzeichnis). index.html, sw.js, update.html und der
+   Ordner vendor müssen auf derselben Ebene liegen. Nicht die ZIP hochladen.
+   Gleichnamige Dateien ersetzen. Alte Dateien müssen vorher nicht gelöscht werden.
+4. Commit changes. Unter Actions warten, bis Pages erfolgreich veröffentlicht ist.
+   Falls Pages neu eingerichtet werden muss: Settings > Pages > Deploy from a
+   branch > verwendeter Branch (meist main) > / (root) > Save.
+5. EINMALIG für betroffene Kollegen diesen Link öffnen:
+   https://hetec-it.github.io/Korrektur-Zeiterfassung/update.html?v=20260928-3
+   Dort auf Jetzt aktualisieren klicken. Vorher offene Formulare abschließen.
+6. Oben im Formular muss Version 2026.09.28-3 stehen. Danach normalen Link nutzen:
+   https://hetec-it.github.io/Korrektur-Zeiterfassung/
+   Installierte App einmal vollständig schließen und wieder öffnen.
+
+Wichtig:
+- Löschen von GitHub-Dateien löscht keine alten Browser-Caches auf Endgeräten.
+- Diese Version arbeitet ONLINE. Keine alte Offline-Formularversion wird geliefert.
+- Die PDF-Bibliothek ist im Paket enthalten; kein externer CDN-Download nötig.
+- PDF-Layouts und Arbeitszeitberechnung aus der aktuellen Anwendung bleiben erhalten.
+- Der Button Aktualisieren lädt erst nach Bestätigung neu, damit Eingaben nicht
+  unbemerkt verloren gehen. Bei künftigen Änderungen neu öffnen/aktualisieren.
+- Reparaturseite löscht ausschließlich Cache-Namen mit zeitkorrektur-.
+  Cookies, LocalStorage und fremde Service Worker werden nicht gelöscht.
+- Fehlt der Reparatur-Link nach dem Upload noch: Veröffentlichung abwarten.
+  Bei weiter bestehenden Problemen Screenshot von Version und genauer URL senden.
+
+Enthalten:
+index.html – beide Formulare und PDF-Export
+sw.js – Online-Service-Worker, räumt alte eigene Caches auf
+update.html – einmalige Aktualisierung vorhandener Installationen
+manifest.webmanifest – App-Metadaten
+icon-*.png, favicon-32.png, apple-touch-icon.png – App-Symbole
+vendor/jspdf.umd.min.js und Lizenz – PDF-Bibliothek
+.nojekyll – statische GitHub-Pages-Veröffentlichung
