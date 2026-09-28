@@ -494,7 +494,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 </head>
 <body>
   <div style="max-width:900px;margin:12px auto;padding:0 16px;font:13px system-ui;color:#475569">
-    <span>Version 2026.09.28-5 · Online-Betrieb</span>
+    <span>Version 2026.09.28-6 · Online-Betrieb</span>
     <button id="refreshApp" type="button" style="margin-left:12px;padding:7px 12px">Aktualisieren</button>
     <p id="updateNotice" hidden style="padding:12px;background:#fef3c7;color:#713f12">Eine Aktualisierung ist bereit. Bitte Eingaben zuerst abschließen und danach auf „Aktualisieren“ klicken.</p>
   </div>
@@ -540,7 +540,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
         <ol>
           <li>Mitarbeitende füllen dieses Formular <u>sofort nach Kenntnis</u> der Fehlmeldung aus.</li>
           <li>Mit der digitalen Unterschrift wird die korrekte Meldung der Arbeitszeit bestätigt. Falschangaben können arbeitsrechtliche Folgen haben.</li>
-          <li>Nach der Unterschrift bitte auf „Per E‑Mail senden" tippen – die PDF senden an: <strong>zeiterfassung@hetec-gmbh.de</strong>.</li>
+          <li>Nach der Unterschrift bitte auf „Per E‑Mail senden“ tippen – die PDF senden an: <strong>zeiterfassung@hetec-gmbh.de</strong>.</li>
         </ol>
       </div>
 
@@ -760,7 +760,10 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 <script>
 document.getElementById('form').addEventListener('submit', e => e.preventDefault());
 
-// Datum US-Format YYYY.MM.DD (natives <input type=date> liefert intern YYYY-MM-DD)
+function esc(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function todayIso(){ const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
+
+// Datum YYYY.MM.DD (natives <input type=date> liefert intern YYYY-MM-DD)
 function fmtDateUS(iso){ return iso ? iso.replaceAll('-', '.') : ''; }
 
 // Zeitverzug berechnen
@@ -777,6 +780,7 @@ const istStart=document.getElementById('istStart'), istEnde=document.getElementB
 const pauseStart=document.getElementById('pauseStart'), pauseEnde=document.getElementById('pauseEnde');
 const wieSoll=document.getElementById('wieSoll');
 function syncIstFromSoll(){
+  istStart.readOnly = istEnde.readOnly = wieSoll.checked;
   if(!wieSoll.checked) return;
   istStart.value = sollStart.value;
   istEnde.value = sollEnde.value;
@@ -859,6 +863,11 @@ document.getElementById('clearSig').addEventListener('click', ()=> ctx.clearRect
 function hasSignature(){
   return hasSignatureRaw();
 }
+function validateZeitForm(){
+  const pOk = pausenabzug.checked || (!!pauseStart.value === !!pauseEnde.value);
+  pauseEnde.setCustomValidity(pOk ? '' : 'Bitte Beginn und Ende der Mittagspause angeben (oder beide leer lassen).');
+  return document.getElementById('form').reportValidity();
+}
 function requireSignature(){
   if(!hasSignature()){
     const err=document.getElementById('sigError');
@@ -925,15 +934,15 @@ function updateAll(){
   }
 
   document.getElementById('summaryBox').innerHTML = `<strong>Zusammenfassung</strong><br>
-  Mitarbeiter: <b>${v} ${n}</b><br>
+  Mitarbeiter: <b>${esc(v)} ${esc(n)}</b><br>
   Korrektur für Datum: <b>${d || '-'}</b><br>
   Normale Arbeitszeit (Soll): <b>${ss||'-'} – ${se||'-'}</b><br>
   Korrekte Arbeitszeit (Ist): <b>${is||'-'} – ${ie||'-'}${istBrutto}</b><br>
   Mittagspause: <b>${mittagspauseText}</b><br>
   Zeitverzug: <b>${fehl.value || '-'}</b> <span class="muted">(Angabe Mitarbeiter – wird nach Prüfung final im System hinterlegt)</span><br>
-  Grund: <b>${g||'-'}</b><br>
+  Grund: <b>${esc(g||'-')}</b><br>
   Ausgefüllt am: <b>${an||'-'}</b><br>
-  Bemerkung: ${ft || '—'}`;
+  Bemerkung: ${esc(ft || '—')}`;
 }
 document.getElementById('form').addEventListener('input', updateAll);
 document.getElementById('form').addEventListener('change', updateAll);
@@ -942,22 +951,17 @@ document.getElementById('form').addEventListener('reset', ()=>{
     ctx.clearRect(0,0,canvas.width,canvas.height);
     document.getElementById('datumHeute').valueAsDate = new Date();
     togglePausenabzug();
+    syncIstFromSoll();
     updateAll();
   }, 0);
 });
 
 // Start: heutiges Datum vorbelegen
 document.getElementById('datumHeute').valueAsDate = new Date();
+['vorfallsdatum','datumHeute','kFeststellung'].forEach(id=>document.getElementById(id).max = todayIso());
 updateAll();
 
 // Druckfertiges A4-Formular mit Vektortext und digitaler Unterschrift (jsPDF)
-function loadScript(src){
-  return new Promise((resolve,reject)=>{
-    const s=document.createElement('script');
-    s.src=src; s.onload=resolve; s.onerror=()=>reject(new Error('Laden fehlgeschlagen: '+src));
-    document.head.appendChild(s);
-  });
-}
 async function ensurePdfLibs(){
   if(!window.jspdf) throw new Error('Die integrierte PDF-Bibliothek konnte nicht gestartet werden. Bitte Seite neu laden.');
 }
@@ -1064,6 +1068,7 @@ async function buildNativeSummaryPdf({rows, hintLines=[], signatureCanvas, signa
 
 // E-Mail vorbereiten — PDF automatisch anhängen (z.B. Outlook), sonst Fallback
 document.getElementById('mailtoBtn').addEventListener('click', async ()=>{
+  if(!validateZeitForm()) return;
   if(!requireSignature()) return;
   updateAll();
   const data = computeZeitFields();
@@ -1075,9 +1080,7 @@ document.getElementById('mailtoBtn').addEventListener('click', async ()=>{
   btn.textContent = 'PDF wird erstellt …'; btn.disabled = true;
 
   try{
-    // jsPDF laden dauert (CDN) - in dieser Zeit könnte ein Resize-Event o.ä.
-    // dazwischenfunken. Deshalb JETZT, unmittelbar vor der eigentlichen
-    // PDF-Erstellung, nochmal zwingend prüfen. Ohne Unterschrift: kein PDF.
+    // Unmittelbar vor der PDF-Erstellung erneut prüfen. Ohne Unterschrift: kein PDF.
     await ensurePdfLibs();
     if(!requireSignature()){
       btn.textContent = oldLabel; btn.disabled = false;
@@ -1137,10 +1140,6 @@ function showScreen(id){
   ['screenStart','screenZeit','screenKrank'].forEach(s=>{
     document.getElementById(s).style.display = (s===id) ? '' : 'none';
   });
-  // Canvas war beim initialen Laden versteckt (screenZeit display:none) und hatte
-  // dadurch clientWidth/clientHeight = 0 -> Signatur unbenutzbar. Hier korrigieren,
-  // sobald der Screen sichtbar ist (nur falls noch nicht korrekt dimensioniert,
-  // damit eine bereits gezeichnete Unterschrift beim erneuten Öffnen erhalten bleibt).
   // Canvas war beim initialen Laden versteckt (screenZeit display:none) und hatte dadurch
   // clientWidth/clientHeight = 0 -> resizeCanvas() ist da ein no-op (siehe dortige Guards).
   // Hier erneut aufrufen, sobald der Screen sichtbar ist - resizeCanvas() selbst prüft bereits
@@ -1202,8 +1201,8 @@ function updateKrankPreview(){
   const zusatz = Array.from(document.querySelectorAll('input[name="kZusatz"]:checked')).map(el => el.value).join(', ');
 
   document.getElementById('krankSummaryBox').innerHTML = `<strong>Zusammenfassung</strong><br>
-  Mitarbeiter: <b>${v} ${n}</b><br>
-  Krankenkasse: <b>${k || '-'}</b><br>
+  Mitarbeiter: <b>${esc(v)} ${esc(n)}</b><br>
+  Krankenkasse: <b>${esc(k || '-')}</b><br>
   Beginn (Datum der Arbeitsunfähigkeit): <b>${beginn || '-'}</b><br>
   Ende (Datum): <b>${ende || '-'}</b><br>
   Tag der Feststellung: <b>${fest || '-'}</b><br>
@@ -1226,6 +1225,8 @@ function requireZusatzinfo(){
 }
 
 document.getElementById('saveKrankBtn').addEventListener('click', async ()=>{
+  const kB=document.getElementById('kBeginn'), kE=document.getElementById('kEnde');
+  kE.setCustomValidity(kB.value && kE.value && kE.value < kB.value ? 'Ende darf nicht vor dem Beginn liegen.' : '');
   if(!formKrank.reportValidity()) return;
   if(!requireZusatzinfo()) return;
   updateKrankPreview();
