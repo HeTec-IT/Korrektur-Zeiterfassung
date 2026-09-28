@@ -1,4 +1,5 @@
-const CACHE_NAME = "zeitkorrektur-v1";
+const CACHE_NAME = "zeitkorrektur-v2";
+const CACHE_PREFIX = "zeitkorrektur-";
 const ASSETS = [
   "./",
   "./index.html",
@@ -9,36 +10,96 @@ const ASSETS = [
   "./icon-512-maskable.png"
 ];
 
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
-  );
-  self.skipWaiting();
+self.addEventListener("install", event => {
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+
+    await Promise.allSettled(ASSETS.map(async path => {
+      const request = new Request(
+        new URL(path, self.registration.scope),
+        { cache: "reload" }
+      );
+      const response = await fetch(request);
+      if (response.ok) await cache.put(request, response);
+    }));
+
+    await self.skipWaiting();
+  })());
 });
 
-self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
-  );
-  self.clients.claim();
+self.addEventListener("activate", event => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+
+    await Promise.all(
+      keys
+        .filter(key =>
+          key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME
+        )
+        .map(key => caches.delete(key))
+    );
+
+    await self.clients.claim();
+  })());
 });
 
-self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") return;
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const network = fetch(event.request)
-        .then((response) => {
-          if (response && response.status === 200) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+self.addEventListener("fetch", event => {
+  const request = event.request;
+  const url = new URL(request.url);
+
+  if (
+    request.method !== "GET" ||
+    url.origin !== self.location.origin ||
+    !url.href.startsWith(self.registration.scope)
+  ) return;
+
+  const result = (async () => {
+    const cache = await caches.open(CACHE_NAME);
+
+    try {
+      const response = await fetch(request, {
+        cache: "no-cache"
+      });
+
+      if (response.ok) {
+        return {
+          response,
+          save: cache.put(request, response.clone())
+            .catch(() => {})
+        };
+      }
+
+      if (response.status < 500) return { response };
+
+      const cached = await cache.match(request);
+      return { response: cached || response };
+    } catch {
+      let cached = await cache.match(request);
+
+      if (!cached && request.mode === "navigate") {
+        cached =
+          await cache.match(
+            new URL("./index.html", self.registration.scope).href
+          ) ||
+          await cache.match(
+            new URL("./", self.registration.scope).href
+          );
+      }
+
+      return {
+        response: cached || new Response(
+          "Offline: Bitte Internetverbindung herstellen.",
+          {
+            status: 503,
+            headers: {
+              "Content-Type": "text/plain; charset=utf-8"
+            }
           }
-          return response;
-        })
-        .catch(() => cached);
-      return cached || network;
-    })
-  );
+        )
+      };
+    }
+  })();
+
+  event.respondWith(result.then(value => value.response));
+  event.waitUntil(result.then(value => value.save));
 });
